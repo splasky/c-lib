@@ -1,0 +1,172 @@
+# MyLib Secure - CPU-optimized Makefile
+# Targets: zen3 (AMD 6800U), zen2 (AMD R5 2600), generic
+
+CC ?= gcc
+AR ?= ar
+RM ?= rm
+MKDIR ?= mkdir -p
+
+VERSION := 2.0.0
+
+# CPU targets
+# zen3  = AMD Ryzen 6000 series (6800U, 6600H, etc.)
+# zen2  = AMD Ryzen 3000/5000 series (3600, 5600X, R5 2600, etc.)
+# generic = Any x86_64 CPU
+CPU_TARGET ?= generic
+
+# Directories
+SRC_DIR := src/secure
+INC_DIR := include
+BUILD_DIR := build/$(CPU_TARGET)
+TEST_DIR := tests/secure
+
+# Sources
+SOURCES := $(wildcard $(SRC_DIR)/*.c)
+OBJECTS := $(SOURCES:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
+HEADERS := $(wildcard $(INC_DIR)/mylib/*.h)
+
+# CPU-specific flags
+ifeq ($(CPU_TARGET),zen3)
+    # AMD Zen 3 (Ryzen 6000 series, EPYC 7003)
+    # -march=znver3 enables: BMI2, CLMUL, SSE4.2, XSAVE, XSAVEOPT, AVX, AVX2
+    # -mprefer-avx128 for better scheduling on Zen 3
+    MARCH := -march=znver3
+    CFLAGS_BASE := -O3 -pipe
+    CFLAGS_SIMD := -mprefer-avx128
+    CFLAGS_LANG := -std=gnu2x -fno-strict-aliasing
+    CFLAGS_DEBUG := -g -fno-omit-frame-pointer
+    LDFLAGS := -lm
+    DESCRIPTION := "AMD Zen 3 optimized (6800U, 6600H, EPYC 7003)"
+else ifeq ($(CPU_TARGET),zen2)
+    # AMD Zen 2 (Ryzen 3000/5000 series, R5 2600, 3600, 5600X, etc.)
+    # -march=znver2 enables: BMI2, CLMUL, SSE4.2, XSAVE, AVX, AVX2
+    MARCH := -march=znver2
+    CFLAGS_BASE := -O3 -pipe
+    CFLAGS_SIMD := -mno-avx256-split-transparent-ops
+    CFLAGS_LANG := -std=gnu2x -fno-strict-aliasing
+    CFLAGS_DEBUG := -g -fno-omit-frame-pointer
+    LDFLAGS := -lm
+    DESCRIPTION := "AMD Zen 2 optimized (R5 2600, 3600, 5600X)"
+else
+    # Generic x86_64
+    MARCH := -march=x86-64-v3
+    CFLAGS_BASE := -O3 -pipe
+    CFLAGS_SIMD := 
+    CFLAGS_LANG := -std=gnu2x -fno-strict-aliasing
+    CFLAGS_DEBUG := -g -fno-omit-frame-pointer
+    LDFLAGS := -lm
+    DESCRIPTION := "Generic x86_64 optimized"
+endif
+
+# Common warning flags (kernel style)
+WFLAGS := -Wall -Wextra -Wpedantic -Wformat=2 -Wformat-security
+WFLAGS += -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations
+WFLAGS += -Wshadow -Wcast-qual -Wcast-align
+WFLAGS += -Wwrite-strings -Wnested-externs
+WFLAGS += -Winline -Wno-unused-parameter
+
+# Security flags
+SFLAGS := -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection
+SFLAGS += -fcf-protection=full -Wl,-z,nodump_stack
+
+# Build type
+BUILD_TYPE ?= release
+
+ifeq ($(BUILD_TYPE),debug)
+    CFLAGS := $(CFLAGS_BASE) $(CFLAGS_LANG) $(CFLAGS_DEBUG) $(WFLAGS)
+    CFLAGS += -fsanitize=address -fsanitize=undefined -fno-sanitize-recover=all
+    CFLAGS += -fno-omit-frame-pointer
+    LDFLAGS += -fsanitize=address -fsanitize=undefined
+    TARGET_NAME := mylib-$(CPU_TARGET)-debug
+else
+    CFLAGS := $(CFLAGS_BASE) $(CFLAGS_LANG) $(CFLAGS_SIMD) $(WFLAGS) $(SFLAGS)
+    CFLAGS += -fomit-frame-pointer -fno-exceptions
+    CFLAGS += -ffunction-sections -fdata-sections
+    TARGET_NAME := mylib-$(CPU_TARGET)-release
+endif
+
+# Include path
+INCLUDES := -I$(INC_DIR)
+
+# Static library
+STATIC_LIB := $(BUILD_DIR)/lib$(TARGET_NAME).a
+
+# Output directories
+$(BUILD_DIR):
+	$(MKDIR) -p $(BUILD_DIR)
+
+# Pattern rules
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c $(HEADERS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+# Static library
+$(STATIC_LIB): $(OBJECTS)
+	$(AR) rcs $@ $^
+
+# Test executable
+TEST_BIN := $(BUILD_DIR)/test_$(TARGET_NAME)
+TEST_SOURCES := $(wildcard $(TEST_DIR)/*.c)
+TEST_OBJECTS := $(TEST_SOURCES:$(TEST_DIR)/%.c=$(BUILD_DIR)/test_%.o)
+TEST_OBJECTS += $(OBJECTS)
+
+$(TEST_BIN): $(TEST_OBJECTS)
+	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
+
+# Targets
+.PHONY: all clean test valgrind asan info install uninstall
+
+all: info $(STATIC_LIB)
+
+info:
+	@echo "Building MyLib Secure v$(VERSION)"
+	@echo "  Target: $(CPU_TARGET)"
+	@echo "  Description: $(DESCRIPTION)"
+	@echo "  March: $(MARCH)"
+	@echo "  Build type: $(BUILD_TYPE)"
+	@echo "  Output: $(STATIC_LIB)"
+
+test: $(TEST_BIN)
+	@echo "Running tests..."
+	@$(TEST_BIN)
+
+valgrind: $(TEST_BIN)
+	@echo "Running valgrind..."
+	valgrind --leak-check=full --show-leak-kinds=all \
+		--track-origins=yes --error-exitcode=1 $(TEST_BIN)
+
+asan: BUILD_TYPE=debug
+asan: $(TEST_BIN)
+	@echo "Running with AddressSanitizer..."
+
+clean:
+	$(RM) -rf $(BUILD_DIR)
+
+# Install (for system-wide use)
+PREFIX ?= /usr/local
+INSTALL_DIR := $(DESTDIR)$(PREFIX)
+INSTALL_INC := $(INSTALL_DIR)/include/mylib
+INSTALL_LIB := $(INSTALL_DIR)/lib
+
+install: $(STATIC_LIB)
+	$(MKDIR) -p $(INSTALL_INC) $(INSTALL_LIB)
+	install -m 644 $(HEADERS) $(INSTALL_INC)/
+	install -m 644 $(STATIC_LIB) $(INSTALL_LIB)/
+	@echo "Installed to $(INSTALL_DIR)"
+
+uninstall:
+	$(RM) -rf $(INSTALL_INC) $(INSTALL_LIB)/libmylib*.a
+
+# Cross-compilation support
+CROSS_COMPILE ?=
+ifeq ($(CROSS_COMPILE),)
+    CC := $(CC)
+else
+    CC := $(CROSS_COMPILE)-gcc
+    AR := $(CROSS_COMPILE)-ar
+endif
+
+# Show compiler info
+info-compiler:
+	@echo "Compiler: $(CC)"
+	@$(CC) --version | head -1
+	@echo "Target: $$($(CC) -dumpmachine)"

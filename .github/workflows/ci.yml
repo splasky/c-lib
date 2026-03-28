@@ -1,0 +1,178 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  test:
+    name: Test and Memory Check (${{ matrix.cpu }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cpu: [generic, zen2, zen3]
+        gcc_version: ['13']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind gcc make
+
+      - name: Set up GCC ${{ matrix.gcc_version }}
+        run: |
+          gcc --version
+
+      - name: Build library (${{ matrix.cpu }})
+        run: |
+          make -f Makefile.secure CPU_TARGET=${{ matrix.cpu }} clean all
+
+      - name: Compile tests
+        run: |
+          gcc -std=gnu2x -Wall -Wextra -g -Iinclude \
+            tests/secure/test_list.c build/${{ matrix.cpu }}/*.o \
+            -o build/${{ matrix.cpu }}/test_list
+          gcc -std=gnu2x -Wall -Wextra -g -Iinclude \
+            tests/secure/test_rbtree.c build/${{ matrix.cpu }}/*.o \
+            -o build/${{ matrix.cpu }}/test_rbtree
+          gcc -std=gnu2x -Wall -Wextra -g -Iinclude \
+            tests/secure/test_hashmap.c build/${{ matrix.cpu }}/*.o \
+            -o build/${{ matrix.cpu }}/test_hashmap
+          gcc -std=gnu2x -Wall -Wextra -g -Iinclude \
+            tests/secure/test_darray.c build/${{ matrix.cpu }}/*.o \
+            -o build/${{ matrix.cpu }}/test_darray
+
+      - name: Run List tests
+        run: |
+          echo "=== List Tests ==="
+          ./build/${{ matrix.cpu }}/test_list
+
+      - name: Run Rbtree tests
+        run: |
+          echo "=== Rbtree Tests ==="
+          ./build/${{ matrix.cpu }}/test_rbtree
+
+      - name: Run Hashmap tests
+        run: |
+          echo "=== Hashmap Tests ==="
+          ./build/${{ matrix.cpu }}/test_hashmap
+
+      - name: Run Darray tests
+        run: |
+          echo "=== Darray Tests ==="
+          ./build/${{ matrix.cpu }}/test_darray
+
+      - name: Memory leak check - List
+        run: |
+          valgrind --leak-check=full --error-exitcode=1 \
+            ./build/${{ matrix.cpu }}/test_list
+
+      - name: Memory leak check - Rbtree
+        run: |
+          valgrind --leak-check=full --error-exitcode=1 \
+            ./build/${{ matrix.cpu }}/test_rbtree
+
+      - name: Memory leak check - Hashmap
+        run: |
+          valgrind --leak-check=full --error-exitcode=1 \
+            ./build/${{ matrix.cpu }}/test_hashmap
+
+      - name: Memory leak check - Darray
+        run: |
+          valgrind --leak-check=full --error-exitcode=1 \
+            ./build/${{ matrix.cpu }}/test_darray
+
+  build-release:
+    name: Build Release Library
+    runs-on: ubuntu-latest
+    needs: test
+    strategy:
+      matrix:
+        cpu: [generic, zen2, zen3]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc make
+
+      - name: Build release (${{ matrix.cpu }})
+        run: |
+          make -f Makefile.secure CPU_TARGET=${{ matrix.cpu }} clean all
+
+      - name: Create artifacts directory
+        run: |
+          mkdir -p artifacts/${{ matrix.cpu }}
+
+      - name: Copy library
+        run: |
+          cp build/${{ matrix.cpu }}/libmylib-${{ matrix.cpu }}-release.a \
+            artifacts/${{ matrix.cpu }}/
+
+      - name: Copy headers
+        run: |
+          cp -r include/mylib artifacts/${{ matrix.cpu }}/
+
+      - name: Create distribution archive
+        run: |
+          cd artifacts/${{ matrix.cpu }}
+          tar -czf ../../mylib-${{ matrix.cpu }}-linux.tar.gz .
+          cd ../..
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mylib-${{ matrix.cpu }}-linux
+          path: mylib-${{ matrix.cpu }}-linux.tar.gz
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: build-release
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure
+        run: |
+          ls -la artifacts/
+
+      - name: Create release archive
+        run: |
+          mkdir -p release
+          for dir in artifacts/*/; do
+            cpu=$(basename "$dir")
+            cp "$dir"*.tar.gz release/
+          done
+          tar -czf mylib-all-platforms.tar.gz release/
+          ls -la release/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          files: release/*.tar.gz
+          draft: false
+          prerelease: false
+          tag_name: v${{ github.run_number }}
+          release_name: MyLib v${{ github.run_number }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
