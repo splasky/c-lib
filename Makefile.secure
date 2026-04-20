@@ -1,4 +1,4 @@
-# MyLib Secure - CPU-optimized Makefile
+# c-lib Secure - CPU-optimized Makefile
 # Targets: zen3 (AMD 6800U), zen2 (AMD R5 2600), generic
 
 CC ?= gcc
@@ -118,7 +118,7 @@ $(TEST_BIN): $(TEST_OBJECTS)
 all: info $(STATIC_LIB)
 
 info:
-	@echo "Building MyLib Secure v$(VERSION)"
+	@echo "Building c-lib Secure v$(VERSION)"
 	@echo "  Target: $(CPU_TARGET)"
 	@echo "  Description: $(DESCRIPTION)"
 	@echo "  March: $(MARCH)"

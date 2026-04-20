@@ -22,7 +22,7 @@ int findPath(int x, int y)
         return 1;
     }
 
-    else if (maze[x][y] == 0)
+    else if (x >= 0 && x < maze_size && y >= 0 && y < maze_size && maze[x][y] == 0)
     {
         maze[x][y] = 2;
         if ((findPath(x - 1, y) + findPath(x + 1, y) + findPath(x, y - 1)

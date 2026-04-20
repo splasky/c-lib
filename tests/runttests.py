@@ -1,4 +1,4 @@
-#! /usr/bin/python
+#! /usr/bin/python3
 # -*- coding: utf-8 -*-
 # vim:fenc=utf-8
 # Last modified: 2018-10-13 11:32:39

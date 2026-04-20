@@ -173,6 +173,6 @@ jobs:
           draft: false
           prerelease: false
           tag_name: v${{ github.run_number }}
-          release_name: MyLib v${{ github.run_number }}
+          release_name: c-lib v${{ github.run_number }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

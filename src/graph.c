@@ -173,7 +173,7 @@ error:
 
 Graph* Graph_create(Graph_compare compare)
 {
-    Graph* graph = malloc(sizeof(graph));
+    Graph* graph = malloc(sizeof(Graph));
     check_mem(graph);
 
     graph->num_of_vertices = 0;
