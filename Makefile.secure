@@ -36,7 +36,7 @@ ifeq ($(CPU_TARGET),zen3)
     CFLAGS_LANG := -std=gnu2x -fno-strict-aliasing
     CFLAGS_DEBUG := -g -fno-omit-frame-pointer
     LDFLAGS := -lm
-    DESCRIPTION := "AMD Zen 3 optimized (6800U, 6600H, EPYC 7003)"
+    DESCRIPTION := AMD Zen 3 optimized (6800U, 6600H, EPYC 7003)
 else ifeq ($(CPU_TARGET),zen2)
     # AMD Zen 2 (Ryzen 3000/5000 series, R5 2600, 3600, 5600X, etc.)
     # -march=znver2 enables: BMI2, CLMUL, SSE4.2, XSAVE, AVX, AVX2
@@ -46,7 +46,7 @@ else ifeq ($(CPU_TARGET),zen2)
     CFLAGS_LANG := -std=gnu2x -fno-strict-aliasing
     CFLAGS_DEBUG := -g -fno-omit-frame-pointer
     LDFLAGS := -lm
-    DESCRIPTION := "AMD Zen 2 optimized (R5 2600, 3600, 5600X)"
+    DESCRIPTION := AMD Zen 2 optimized (R5 2600, 3600, 5600X)
 else
     # Generic x86_64
     MARCH := -march=x86-64-v3
@@ -55,7 +55,7 @@ else
     CFLAGS_LANG := -std=gnu2x -fno-strict-aliasing
     CFLAGS_DEBUG := -g -fno-omit-frame-pointer
     LDFLAGS := -lm
-    DESCRIPTION := "Generic x86_64 optimized"
+    DESCRIPTION := Generic x86_64 optimized
 endif
 
 # Common warning flags (kernel style)
