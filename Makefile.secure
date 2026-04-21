@@ -42,7 +42,7 @@ else ifeq ($(CPU_TARGET),zen2)
     # -march=znver2 enables: BMI2, CLMUL, SSE4.2, XSAVE, AVX, AVX2
     MARCH := -march=znver2
     CFLAGS_BASE := -O3 -pipe
-    CFLAGS_SIMD := -mno-avx256-split-transparent-ops
+    CFLAGS_SIMD :=
     CFLAGS_LANG := -std=gnu2x -fno-strict-aliasing
     CFLAGS_DEBUG := -g -fno-omit-frame-pointer
     LDFLAGS := -lm
