@@ -88,6 +88,63 @@ jobs:
           valgrind --leak-check=full --error-exitcode=1 \
             ./build/${{ matrix.cpu }}/test_darray
 
+  test-arm:
+    name: Build ARM bare-metal (${{ matrix.cpu }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cpu: [arm32, arm32-hf]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install ARM toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make
+
+      - name: Verify toolchain
+        run: |
+          arm-none-eabi-gcc --version
+
+      - name: Build library (${{ matrix.cpu }})
+        run: |
+          make -f Makefile.secure CPU_TARGET=${{ matrix.cpu }} clean all
+
+      - name: Verify ARM ELF output
+        run: |
+          set -e
+          for obj in build/${{ matrix.cpu }}/*.o; do
+            echo "=== $obj ==="
+            arm-none-eabi-readelf -h "$obj" | grep -E "Class|Machine"
+            arm-none-eabi-readelf -h "$obj" | grep -q "Machine:.*ARM"
+          done
+          echo "All objects verified as ARM ELF"
+
+      - name: Check float ABI
+        run: |
+          # Compile a synthetic float op to confirm -mfloat-abi took effect
+          echo 'float f(float a, float b) { return a + b; }' > /tmp/fp.c
+          case "${{ matrix.cpu }}" in
+            arm32)
+              arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -mfloat-abi=soft \
+                -c /tmp/fp.c -o /tmp/fp.o
+              if arm-none-eabi-readelf -A /tmp/fp.o | grep -q "Tag_FP_arch"; then
+                echo "ERROR: soft-float build has Tag_FP_arch"; exit 1
+              fi
+              ;;
+            arm32-hf)
+              arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb \
+                -mfpu=fpv4-sp-d16 -mfloat-abi=hard \
+                -c /tmp/fp.c -o /tmp/fp.o
+              arm-none-eabi-readelf -A /tmp/fp.o | grep -q "Tag_FP_arch: VFPv4-D16"
+              arm-none-eabi-readelf -A /tmp/fp.o | grep -q "Tag_ABI_VFP_args: VFP registers"
+              ;;
+          esac
+          echo "Float ABI verified for ${{ matrix.cpu }}"
+
   build-release:
     name: Build Release Library
     runs-on: ubuntu-latest
