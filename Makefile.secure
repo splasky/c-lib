@@ -47,11 +47,33 @@ else ifeq ($(CPU_TARGET),zen2)
     CFLAGS_DEBUG := -g -fno-omit-frame-pointer
     LDFLAGS := -lm
     DESCRIPTION := AMD Zen 2 optimized (R5 2600, 3600, 5600X)
+else ifeq ($(CPU_TARGET),arm32)
+    # ARM32 bare metal — Cortex-M4 soft-float (no FPU required)
+    CROSS_COMPILE ?= arm-none-eabi
+    MARCH := -mcpu=cortex-m4 -mthumb -mfloat-abi=soft
+    CFLAGS_BASE := -Os -pipe -ffreestanding -fno-builtin -fno-common
+    CFLAGS_SIMD :=
+    CFLAGS_LANG := -std=gnu2x -fno-strict-aliasing
+    CFLAGS_DEBUG := -g -fno-omit-frame-pointer
+    LDFLAGS := -nostdlib
+    DESCRIPTION := ARM32 bare metal (Cortex-M4, soft-float)
+    BARE_METAL := 1
+else ifeq ($(CPU_TARGET),arm32-hf)
+    # ARM32 bare metal — Cortex-M4F with FPv4-SP hard-float
+    CROSS_COMPILE ?= arm-none-eabi
+    MARCH := -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard
+    CFLAGS_BASE := -Os -pipe -ffreestanding -fno-builtin -fno-common
+    CFLAGS_SIMD :=
+    CFLAGS_LANG := -std=gnu2x -fno-strict-aliasing
+    CFLAGS_DEBUG := -g -fno-omit-frame-pointer
+    LDFLAGS := -nostdlib
+    DESCRIPTION := ARM32 bare metal (Cortex-M4F, hard-float FPv4-SP)
+    BARE_METAL := 1
 else
     # Generic x86_64
     MARCH := -march=x86-64-v3
     CFLAGS_BASE := -O3 -pipe
-    CFLAGS_SIMD := 
+    CFLAGS_SIMD :=
     CFLAGS_LANG := -std=gnu2x -fno-strict-aliasing
     CFLAGS_DEBUG := -g -fno-omit-frame-pointer
     LDFLAGS := -lm
@@ -66,17 +88,25 @@ WFLAGS += -Wwrite-strings -Wnested-externs
 WFLAGS += -Winline -Wno-unused-parameter
 
 # Security flags
-SFLAGS := -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection
-SFLAGS += -fcf-protection=full -Wl,-z,nodump_stack
+# _FORTIFY_SOURCE needs libc wrappers, -fcf-protection is x86-only,
+# -Wl,-z,nodump_stack is a hosted-linker option — skip all on bare metal.
+ifdef BARE_METAL
+    SFLAGS :=
+else
+    SFLAGS := -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection
+    SFLAGS += -fcf-protection=full -Wl,-z,nodump_stack
+endif
 
 # Build type
 BUILD_TYPE ?= release
 
 ifeq ($(BUILD_TYPE),debug)
     CFLAGS := $(CFLAGS_BASE) $(CFLAGS_LANG) $(CFLAGS_DEBUG) $(WFLAGS)
-    CFLAGS += -fsanitize=address -fsanitize=undefined -fno-sanitize-recover=all
+    ifndef BARE_METAL
+        CFLAGS += -fsanitize=address -fsanitize=undefined -fno-sanitize-recover=all
+        LDFLAGS += -fsanitize=address -fsanitize=undefined
+    endif
     CFLAGS += -fno-omit-frame-pointer
-    LDFLAGS += -fsanitize=address -fsanitize=undefined
     TARGET_NAME := mylib-$(CPU_TARGET)-debug
 else
     CFLAGS := $(CFLAGS_BASE) $(CFLAGS_LANG) $(CFLAGS_SIMD) $(WFLAGS) $(SFLAGS)
