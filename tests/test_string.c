@@ -1,5 +1,5 @@
 #include "../include/new.h"
-#include "../include/string.h"
+#include "../include/mystring.h"
 #include "unit.h"
 
 struct String *a, *b;
