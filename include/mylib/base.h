@@ -161,7 +161,7 @@ MYLIB_HOT MYLIB_INLINE int mylib_strcmp(const char *s1, const char *s2)
         s1++;
         s2++;
     }
-    return (*(unsigned char *)s1) - (*(unsigned char *)s2);
+    return (*(const unsigned char *)s1) - (*(const unsigned char *)s2);
 }
 
 MYLIB_HOT MYLIB_INLINE mylib_size_t mylib_strlen(const char *s)

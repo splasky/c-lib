@@ -8,13 +8,19 @@
 #define MYLIB_HASHMAP_GROWTH_FACTOR 2
 
 typedef struct mylib_hashmap_entry {
-    void *key;
+    const void *key;
     void *value;
     mylib_size_t keylen;
     uint32_t hash;
     struct mylib_hashmap_entry *next;
     bool occupied;
 } mylib_hashmap_entry;
+
+static inline void *mylib_hashmap_key_as_mutable(const void *key)
+{
+    union { const void *cp; void *p; } u = { .cp = key };
+    return u.p;
+}
 
 struct mylib_hashmap {
     mylib_hashmap_entry *entries;
@@ -32,19 +38,12 @@ static mylib_hashmap_entry *entry_create(const void *key, mylib_size_t keylen,
     if (MYLIB_UNLIKELY(entry == NULL))
         return NULL;
 
-    entry->key = (void *)key;
+    entry->key = key;
     entry->value = value;
     entry->keylen = keylen;
     entry->hash = hash;
     entry->occupied = true;
     return entry;
-}
-
-static void entry_free(mylib_hashmap_entry *entry)
-{
-    if (entry != NULL) {
-        free(entry);
-    }
 }
 
 mylib_hashmap *mylib_hashmap_create(mylib_size_t initial_capacity)
@@ -122,13 +121,13 @@ void mylib_hashmap_clear_with(mylib_hashmap *map, mylib_hashmap_free_fn free_fn)
         mylib_hashmap_entry *entry = &map->entries[i];
         if (entry->occupied) {
             if (free_fn != NULL) {
-                free_fn(entry->key, entry->value);
+                free_fn(mylib_hashmap_key_as_mutable(entry->key), entry->value);
             }
             mylib_hashmap_entry *curr = entry->next;
             while (curr != NULL) {
                 mylib_hashmap_entry *next = curr->next;
                 if (free_fn != NULL) {
-                    free_fn(curr->key, curr->value);
+                    free_fn(mylib_hashmap_key_as_mutable(curr->key), curr->value);
                 }
                 free(curr);
                 curr = next;
@@ -234,7 +233,7 @@ bool mylib_hashmap_put(mylib_hashmap *map, const void *key, mylib_size_t keylen,
             return false;
         entry->next = new_entry;
     } else {
-        entry->key = (void *)key;
+        entry->key = key;
         entry->value = value;
         entry->keylen = keylen;
         entry->hash = hash;
@@ -252,7 +251,7 @@ void *mylib_hashmap_get(const mylib_hashmap *map, const void *key, mylib_size_t 
 
     uint32_t hash = map->hash_fn(key, keylen);
     mylib_size_t idx = hash % map->capacity;
-    mylib_hashmap_entry *entry = &((mylib_hashmap *)map)->entries[idx];
+    const mylib_hashmap_entry *entry = &map->entries[idx];
 
     while (entry != NULL) {
         if (entry->occupied &&
@@ -331,7 +330,7 @@ bool mylib_hashmap_foreach(const mylib_hashmap *map, mylib_hashmap_visit_fn visi
         return false;
 
     for (mylib_size_t i = 0; i < map->capacity; i++) {
-        mylib_hashmap_entry *entry = &((mylib_hashmap *)map)->entries[i];
+        const mylib_hashmap_entry *entry = &map->entries[i];
         while (entry != NULL) {
             if (entry->occupied) {
                 if (!visit(entry->key, entry->keylen, entry->value, userdata))

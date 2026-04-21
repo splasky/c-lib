@@ -11,13 +11,6 @@ mylib_list *mylib_list_create(void)
     return list;
 }
 
-static void list_node_free(mylib_list_node *node)
-{
-    if (node == NULL)
-        return;
-    free(node);
-}
-
 static mylib_list_node *list_node_create(void *data)
 {
     mylib_list_node *node = calloc(1, sizeof(*node));

@@ -32,8 +32,8 @@ bool mylib_rbtree_insert(mylib_rbtree *tree, void *key, void *value);
 bool mylib_rbtree_delete(mylib_rbtree *tree, const void *key);
 void *mylib_rbtree_search(const mylib_rbtree *tree, const void *key);
 bool mylib_rbtree_update(mylib_rbtree *tree, const void *key, void *value);
-mylib_rbtree_node *mylib_rbtree_min(const mylib_rbtree_node *node);
-mylib_rbtree_node *mylib_rbtree_max(const mylib_rbtree_node *node);
+mylib_rbtree_node *mylib_rbtree_min(mylib_rbtree_node *node);
+mylib_rbtree_node *mylib_rbtree_max(mylib_rbtree_node *node);
 mylib_size_t mylib_rbtree_count(const mylib_rbtree *tree);
 bool mylib_rbtree_is_empty(const mylib_rbtree *tree);
 

@@ -385,22 +385,22 @@ bool mylib_rbtree_update(mylib_rbtree *tree, const void *key, void *value)
     return false;
 }
 
-mylib_rbtree_node *mylib_rbtree_min(const mylib_rbtree_node *node)
+mylib_rbtree_node *mylib_rbtree_min(mylib_rbtree_node *node)
 {
     if (node == NULL)
         return NULL;
     while (node->left != NULL)
         node = node->left;
-    return (mylib_rbtree_node *)node;
+    return node;
 }
 
-mylib_rbtree_node *mylib_rbtree_max(const mylib_rbtree_node *node)
+mylib_rbtree_node *mylib_rbtree_max(mylib_rbtree_node *node)
 {
     if (node == NULL)
         return NULL;
     while (node->right != NULL)
         node = node->right;
-    return (mylib_rbtree_node *)node;
+    return node;
 }
 
 mylib_size_t mylib_rbtree_count(const mylib_rbtree *tree)

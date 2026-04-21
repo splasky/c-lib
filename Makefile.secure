@@ -59,7 +59,7 @@ else
 endif
 
 # Common warning flags (kernel style)
-WFLAGS := -Wall -Wextra -Wpedantic -Wformat=2 -Wformat-security
+WFLAGS := -Werror -Wall -Wextra -Wpedantic -Wformat=2 -Wformat-security
 WFLAGS += -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations
 WFLAGS += -Wshadow -Wcast-qual -Wcast-align
 WFLAGS += -Wwrite-strings -Wnested-externs
