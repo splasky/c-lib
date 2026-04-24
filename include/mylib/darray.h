@@ -1,13 +1,34 @@
 #ifndef MYLIB_DARRAY_H
 #define MYLIB_DARRAY_H
 
-#include "compat.h"
+#include "c_lib/base.h"
+#include "c_lib/darray.h"
 
-#define MYLIB_DARRAY_FOREACH(arr, var) \
-    for (c_lib_size_t c_lib_concat(_i_, __LINE__) = 0; \
-         c_lib_concat(_i_, __LINE__) < c_lib_darray_size(arr) && ((var) = c_lib_darray_get(arr, c_lib_concat(_i_, __LINE__)), 1); \
-         c_lib_concat(_i_, __LINE__)++)
-
-#define MYLIB_MACRO_CONCATENATE(a, b) c_lib_concat(a, b)
+#define mylib_darray c_lib_darray
+#define mylib_darray_create c_lib_darray_create
+#define mylib_darray_destroy c_lib_darray_destroy
+#define mylib_darray_destroy_with c_lib_darray_destroy_with
+#define mylib_darray_clear c_lib_darray_clear
+#define mylib_darray_clear_with c_lib_darray_clear_with
+#define mylib_darray_push c_lib_darray_push
+#define mylib_darray_pop c_lib_darray_pop
+#define mylib_darray_peek c_lib_darray_peek
+#define mylib_darray_set c_lib_darray_set
+#define mylib_darray_get c_lib_darray_get
+#define mylib_darray_take c_lib_darray_take
+#define mylib_darray_insert c_lib_darray_insert
+#define mylib_darray_remove c_lib_darray_remove
+#define mylib_darray_erase c_lib_darray_erase
+#define mylib_darray_size c_lib_darray_size
+#define mylib_darray_capacity c_lib_darray_capacity
+#define mylib_darray_is_empty c_lib_darray_is_empty
+#define mylib_darray_reserve c_lib_darray_reserve
+#define mylib_darray_shrink_to_fit c_lib_darray_shrink_to_fit
+#define mylib_darray_sort c_lib_darray_sort
+#define mylib_darray_cmp c_lib_darray_cmp
+#define MYLIB_DARRAY_FOREACH c_lib_darray_foreach
+#define MYLIB_DARRAY_DEFAULT_CAPACITY C_LIB_DARRAY_DEFAULT_CAPACITY
+#define MYLIB_DARRAY_GROWTH_FACTOR C_LIB_DARRAY_GROWTH_FACTOR
+#define MYLIB_MACRO_CONCATENATE c_lib_concat
 
 #endif

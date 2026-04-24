@@ -27,6 +27,9 @@
 #define MYLIB_RBTREE_H
 #endif
 
+typedef c_lib_size_t mylib_size_t;
+typedef c_lib_ssize_t mylib_ssize_t;
+
 #define mylib_size_t c_lib_size_t
 #define mylib_ssize_t c_lib_ssize_t
 

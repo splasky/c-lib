@@ -1,6 +1,31 @@
 #ifndef MYLIB_HASHMAP_H
 #define MYLIB_HASHMAP_H
 
+#include "c_lib/base.h"
+#include "c_lib/hashmap.h"
 #include "compat.h"
+
+typedef c_lib_size_t mylib_size_t;
+
+#define mylib_hashmap c_lib_hashmap
+#define mylib_hashmap_create c_lib_hashmap_create
+#define mylib_hashmap_destroy c_lib_hashmap_destroy
+#define mylib_hashmap_destroy_with c_lib_hashmap_destroy_with
+#define mylib_hashmap_clear c_lib_hashmap_clear
+#define mylib_hashmap_clear_with c_lib_hashmap_clear_with
+#define mylib_hashmap_put c_lib_hashmap_put
+#define mylib_hashmap_get c_lib_hashmap_get
+#define mylib_hashmap_remove c_lib_hashmap_remove
+#define mylib_hashmap_contains c_lib_hashmap_contains
+#define mylib_hashmap_count c_lib_hashmap_count
+#define mylib_hashmap_is_empty c_lib_hashmap_is_empty
+#define mylib_hashmap_foreach c_lib_hashmap_foreach
+#define mylib_hashmap_hash_fnv1a c_lib_hashmap_hash_fnv1a
+#define mylib_hashmap_hash_djb2 c_lib_hashmap_hash_djb2
+#define mylib_hashmap_hash_sdbm c_lib_hashmap_hash_sdbm
+#define mylib_hash_fn c_lib_hash_fn
+#define mylib_hashmap_cmp c_lib_hashmap_cmp
+#define mylib_hashmap_free_fn c_lib_hashmap_free_fn
+#define mylib_hashmap_visit_fn c_lib_hashmap_visit_fn
 
 #endif
