@@ -77,6 +77,26 @@ TEST_SOURCES := $(wildcard $(TEST_DIR)/*.c)
 
 .PHONY: all clean test valgrind asan info install uninstall help coverage
 
+help:
+
+help:
+	@echo "c-lib v$(VERSION) - Build targets:"
+	@echo ""
+	@echo "  make              - Build library (default)"
+	@echo "  make all          - Build library"
+	@echo "  make test        - Build and run tests"
+	@echo "  make clean      - Clean build artifacts"
+	@echo "  make info      - Show build info"
+	@echo "  make coverage  - Build with coverage (COVERAGE=1)"
+	@echo "  make install   - Install to PREFIX ($(PREFIX))"
+	@echo ""
+	@echo "  CPU_TARGET: zen3, zen2, generic (default: generic)"
+	@echo "  BUILD_TYPE: debug, release (default: release)"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make CPU_TARGET=zen3"
+	@echo "  make BUILD_TYPE=debug"
+
 all: info $(STATIC_LIB)
 
 info:
