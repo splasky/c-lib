@@ -6,16 +6,16 @@ AR ?= ar
 RM ?= rm
 MKDIR ?= mkdir -p
 
-VERSION := 2.0.0
+VERSION := 3.0.0
 
 # CPU targets
 # zen3  = AMD Ryzen 6000 series (6800U, 6600H, etc.)
-# zen2  = AMD Ryzen 3000/5000 series (3600, 5600X, R5 2600, etc.)
+# zen2  = AMD Ryzen 3000/5000 series (R5 2600, etc.)
 # generic = Any x86_64 CPU
 CPU_TARGET ?= generic
 
 # Directories
-SRC_DIR := src/secure
+SRC_DIR := src/c_lib
 INC_DIR := include
 BUILD_DIR := build/$(CPU_TARGET)
 TEST_DIR := tests/secure
@@ -23,7 +23,7 @@ TEST_DIR := tests/secure
 # Sources
 SOURCES := $(wildcard $(SRC_DIR)/*.c)
 OBJECTS := $(SOURCES:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
-HEADERS := $(wildcard $(INC_DIR)/mylib/*.h)
+HEADERS := $(wildcard $(INC_DIR)/c_lib/*.h)
 
 # CPU-specific flags
 ifeq ($(CPU_TARGET),zen3)
@@ -127,6 +127,7 @@ $(BUILD_DIR):
 
 # Pattern rules
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c $(HEADERS) | $(BUILD_DIR)
+	@echo "Compiling $<"
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 # Static library
