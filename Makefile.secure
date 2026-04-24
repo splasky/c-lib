@@ -107,12 +107,9 @@ ifeq ($(BUILD_TYPE),debug)
         LDFLAGS += -fsanitize=address -fsanitize=undefined
     endif
     CFLAGS += -fno-omit-frame-pointer
-    TARGET_NAME := mylib-$(CPU_TARGET)-debug
+TARGET_NAME := c_lib-$(CPU_TARGET)-debug
 else
-    CFLAGS := $(CFLAGS_BASE) $(CFLAGS_LANG) $(CFLAGS_SIMD) $(WFLAGS) $(SFLAGS)
-    CFLAGS += -fomit-frame-pointer -fno-exceptions
-    CFLAGS += -ffunction-sections -fdata-sections
-    TARGET_NAME := mylib-$(CPU_TARGET)-release
+    TARGET_NAME := c_lib-$(CPU_TARGET)-release
 endif
 
 # Include path
@@ -175,7 +172,7 @@ clean:
 # Install (for system-wide use)
 PREFIX ?= /usr/local
 INSTALL_DIR := $(DESTDIR)$(PREFIX)
-INSTALL_INC := $(INSTALL_DIR)/include/mylib
+INSTALL_INC := $(INSTALL_DIR)/include/c_lib
 INSTALL_LIB := $(INSTALL_DIR)/lib
 
 install: $(STATIC_LIB)
@@ -185,7 +182,7 @@ install: $(STATIC_LIB)
 	@echo "Installed to $(INSTALL_DIR)"
 
 uninstall:
-	$(RM) -rf $(INSTALL_INC) $(INSTALL_LIB)/libmylib*.a
+	$(RM) -rf $(INSTALL_INC) $(INSTALL_LIB)/c_lib*.a
 
 # Cross-compilation support
 CROSS_COMPILE ?=
