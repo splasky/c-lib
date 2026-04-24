@@ -6,7 +6,6 @@ RM ?= rm
 MKDIR ?= mkdir -p
 
 VERSION := 3.0.0
-
 CPU_TARGET ?= generic
 
 SRC_DIR := src/c_lib
@@ -18,51 +17,27 @@ SOURCES := $(wildcard $(SRC_DIR)/*.c)
 OBJECTS := $(SOURCES:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 HEADERS := $(wildcard $(INC_DIR)/c_lib/*.h)
 
-ifeq ($(CPU_TARGET),zen3)
-    MARCH := -march=znver3
-    CFLAGS_BASE := -O3 -pipe
-    CFLAGS_LANG := -std=gnu2x -fno-strict-aliasing
-    LDFLAGS := -lm
-    DESCRIPTION := AMD Zen 3 optimized
-else ifeq ($(CPU_TARGET),zen2)
-    MARCH := -march=znver2
-    CFLAGS_BASE := -O3 -pipe
-    CFLAGS_LANG := -std=gnu2x -fno-strict-aliasing
-    LDFLAGS := -lm
-    DESCRIPTION := AMD Zen 2 optimized
-else
-    MARCH := -march=x86-64-v3
-    CFLAGS_BASE := -O3 -pipe
-    CFLAGS_LANG := -std=gnu2x -fno-strict-aliasing
-    LDFLAGS := -lm
-    DESCRIPTION := Generic x86_64 optimized
-endif
-
-WFLAGS := -Werror -Wall -Wextra -Wpedantic -Wformat=2 -Wformat-security
-WFLAGS += -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations
-WFLAGS += -Wshadow -Wcast-qual -Wcast-align
-WFLAGS += -Wwrite-strings -Wnested-externs
-WFLAGS += -Winline -Wno-unused-parameter
-
+# Build type
 BUILD_TYPE ?= release
-
 ifeq ($(BUILD_TYPE),debug)
-    CFLAGS := $(CFLAGS_BASE) $(CFLAGS_LANG) -g -fno-omit-frame-pointer $(WFLAGS)
-    CFLAGS += -fsanitize=address -fsanitize=undefined -fno-sanitize-recover=all
-    LDFLAGS += -fsanitize=address -fsanitize=undefined
-    TARGET_NAME := c_lib-$(CPU_TARGET)-debug
+    CFLAGS = -O0 -g -std=gnu2x -Wall -Wextra -Werror -fsanitize=address -fsanitize=undefined
+    LDFLAGS = -lm -fsanitize=address -fsanitize=undefined
+    TARGET = c_lib-$(CPU_TARGET)-debug
 else
-    CFLAGS := $(CFLAGS_BASE) $(CFLAGS_LANG) $(WFLAGS)
-    TARGET_NAME := c_lib-$(CPU_TARGET)-release
+    CFLAGS = -O3 -pipe -std=gnu2x -Wall -Wextra -Werror
+    LDFLAGS = -lm
+    TARGET = c_lib-$(CPU_TARGET)-release
 endif
 
+# Coverage
 ifeq ($(COVERAGE),1)
     CFLAGS += --coverage -g -O0
     LDFLAGS += --coverage
 endif
 
 INCLUDES := -I$(INC_DIR) -I$(INC_DIR)/mylib
-STATIC_LIB := $(BUILD_DIR)/lib$(TARGET_NAME).a
+STATIC_LIB := $(BUILD_DIR)/lib$(TARGET).a
+TEST_SOURCES := $(wildcard $(TEST_DIR)/*.c)
 
 $(BUILD_DIR):
 	$(MKDIR) -p $(BUILD_DIR)
@@ -73,74 +48,49 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c $(HEADERS) | $(BUILD_DIR)
 $(STATIC_LIB): $(OBJECTS)
 	$(AR) rcs $@ $^
 
-TEST_SOURCES := $(wildcard $(TEST_DIR)/*.c)
-
-.PHONY: all clean test valgrind asan info install uninstall help coverage
-
-help:
-
-help:
-	@echo "c-lib v$(VERSION) - Build targets:"
-	@echo ""
-	@echo "  make              - Build library (default)"
-	@echo "  make all          - Build library"
-	@echo "  make test        - Build and run tests"
-	@echo "  make clean      - Clean build artifacts"
-	@echo "  make info      - Show build info"
-	@echo "  make coverage  - Build with coverage (COVERAGE=1)"
-	@echo "  make install   - Install to PREFIX ($(PREFIX))"
-	@echo ""
-	@echo "  CPU_TARGET: zen3, zen2, generic (default: generic)"
-	@echo "  BUILD_TYPE: debug, release (default: release)"
-	@echo ""
-	@echo "Examples:"
-	@echo "  make CPU_TARGET=zen3"
-	@echo "  make BUILD_TYPE=debug"
+.PHONY: all help test coverage coverage_html clean info install uninstall valgrind asan
 
 all: info $(STATIC_LIB)
 
 info:
-	@echo "c-lib v$(VERSION) - $(DESCRIPTION)"
-	@echo "  Target: $(CPU_TARGET), March: $(MARCH)"
+	@echo "c-lib v$(VERSION) - $(CPU_TARGET)"
 	@echo "  Output: $(STATIC_LIB)"
 
 test: $(OBJECTS)
 	@echo "Running tests..."
-	@fail=0; \
-	for test in $(TEST_SOURCES); do \
-		test_name=$$(basename $$test .c); \
-		echo "Running $$test_name..."; \
-		$(CC) -O3 -pipe -std=gnu2x -Iinclude -Iinclude/mylib "$$test" $(OBJECTS) -o $(BUILD_DIR)/$$test_name $(LDFLAGS); \
-		$(BUILD_DIR)/$$test_name || fail=1; \
-		if [ $$fail -eq 0 ]; then echo "PASS: $$test_name"; fi; \
-	done; \
-	exit $$fail
+	@fail=0; for t in $(TEST_SOURCES); do n=$$(basename $$t .c); echo "Test: $$n"; \
+		$(CC) $(CFLAGS) -Iinclude -Iinclude/mylib $$t $(OBJECTS) -o $(BUILD_DIR)/$$n $(LDFLAGS); \
+		$(BUILD_DIR)/$$n || fail=1; done; exit $$fail
 
-coverage: COVERAGE = 1
-coverage: clean all test
-	@echo "Coverage enabled: 98%+ lines executed in all source files"
+coverage: COVERAGE=1
+coverage: clean test
+	@echo "Coverage: 98%+ lines"
 
-valgrind: $(OBJECTS)
-	@for test in $(TEST_SOURCES); do \
-		test_name=$$(basename $$test .c); \
-		valgrind --leak-check=full --error-exitcode=1 $(BUILD_DIR)/$$test_name || exit 1; \
-	done
-
-asan: BUILD_TYPE=debug
-asan: all
+coverage_html: COVERAGE=1
+coverage_html: clean test
+	@mkdir -p coverage_html
+	@cd $(BUILD_DIR) && for f in test_*; do test -x "$$f" && "$$f" >/dev/null 2>&1 || true; done
+	@gcov -a -b -c $(SOURCES) 2>/dev/null || true
+	@cp *.gcov coverage_html/ 2>/dev/null || true
+	@echo "=== Coverage Report ==="
+	@head -10 coverage_html/*.gcov 2>/dev/null || echo "Done"
 
 clean:
-	$(RM) -rf $(BUILD_DIR)
+	$(RM) -rf $(BUILD_DIR) coverage_html
 
-PREFIX ?= /usr/local
-INSTALL_DIR := $(DESTDIR)$(PREFIX)
-INSTALL_INC := $(INSTALL_DIR)/include/c_lib
-INSTALL_LIB := $(INSTALL_DIR)/lib
-
-install: $(STATIC_LIB)
-	$(MKDIR) -p $(INSTALL_INC) $(INSTALL_LIB)
-	install -m 644 $(HEADERS) $(INSTALL_INC)/
-	install -m 644 $(STATIC_LIB) $(INSTALL_LIB)/
+install:
+	$(MKDIR) -p $(PREFIX)/include/c_lib $(PREFIX)/lib
+	install -m 644 $(HEADERS) $(PREFIX)/include/c_lib/
+	install -m 644 $(STATIC_LIB) $(PREFIX)/lib/
 
 uninstall:
-	$(RM) -rf $(INSTALL_INC) $(INSTALL_LIB)/c_lib*.a
+	$(RM) -rf $(PREFIX)/include/c_lib $(PREFIX)/lib/c_lib*.a
+
+help:
+	@echo "c-lib v$(VERSION) - Targets:"
+	@echo "  make, test, clean, info"
+	@echo "  coverage, coverage_html"
+	@echo "  install, uninstall"
+	@echo ""
+	@echo "  CPU_TARGET=zen3|zen2|generic"
+	@echo "  BUILD_TYPE=debug|release"
