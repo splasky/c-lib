@@ -141,9 +141,30 @@ $(TEST_BIN): $(TEST_OBJECTS)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 # Targets
-.PHONY: all clean test valgrind asan info install uninstall
+.PHONY: all clean test valgrind asan info install uninstall help
 
 all: info $(STATIC_LIB)
+
+help:
+	@echo "c-lib Secure v$(VERSION) - Build targets:"
+	@echo ""
+	@echo "  make                - Build static library (default)"
+	@echo "  make all             - Build static library"
+	@echo "  make test           - Build and run tests"
+	@echo "  make clean          - Clean build artifacts"
+	@echo "  make info          - Show build configuration"
+	@echo "  make valgrind      - Run with valgrind memory checker"
+	@echo "  make asan         - Build with AddressSanitizer"
+	@echo "  make install      - Install to PREFIX ($(PREFIX))"
+	@echo "  make uninstall   - Remove installed files"
+	@echo ""
+	@echo "  CPU_TARGET: zen3, zen2, arm32, arm32-hf, generic (default: generic)"
+	@echo "  BUILD_TYPE: debug, release (default: release)"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make CPU_TARGET=zen3          - Build for AMD Zen 3"
+	@echo "  make CPU_TARGET=zen2 BUILD_TYPE=debug - Debug build for AMD Zen 2"
+	@echo "  make PREFIX=/usr install     - Install to /usr"
 
 info:
 	@echo "Building c-lib Secure v$(VERSION)"
