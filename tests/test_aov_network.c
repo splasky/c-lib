@@ -59,6 +59,7 @@ int topological_sort(Graph* graph)
                 Queue_send(queue, source);
             }
         }
+        free(vertex);
     }
     Queue_clear_destory(queue);
 
@@ -103,6 +104,8 @@ TEST(test_aov_network)
         printf("graph2 doesn't has cycle\n");
     }
 
+    Graph_destory(graph1);
+    Graph_destory(graph2);
     return NULL;
 }
 

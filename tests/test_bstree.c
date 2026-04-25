@@ -57,6 +57,7 @@ TEST(delete)
     int* p = BSTree_delete(bstree, ptr);
     debug("%d\n", *p);
     unit_assert(*p == 4, "delete key failed");
+    free(p);
     return NULL;
 }
 

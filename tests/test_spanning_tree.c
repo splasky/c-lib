@@ -98,6 +98,7 @@ TEST(test_spanning_tree)
     }
 
     printf("\n");
+    LinkedList_clear_destory(list);
     return NULL;
 }
 

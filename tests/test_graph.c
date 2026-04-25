@@ -11,18 +11,14 @@ static int int_compare(const void* a, const void* b)
     return (x > y) - (y > x);
 }
 
+static int edges[12][2] = { { 1, 2 }, { 1, 3 }, { 2, 1 }, { 3, 1 }, { 2, 3 }, { 3, 2 },
+    { 2, 4 }, { 4, 2 }, { 3, 5 }, { 5, 3 }, { 4, 5 }, { 5, 4 } };
+
 TEST(test_create)
 {
-    int edge[12][2] = { { 1, 2 }, { 1, 3 }, { 2, 1 }, { 3, 1 }, { 2, 3 }, { 3, 2 },
-        { 2, 4 }, { 4, 2 }, { 3, 5 }, { 5, 3 }, { 4, 5 }, { 5, 4 } };
-
     graph = Graph_create(int_compare);
     for (int i = 0; i < 12; ++i) {
-        int* source = malloc(sizeof(int));
-        *source = edge[i][0];
-        int* dest = malloc(sizeof(int));
-        *dest = edge[i][1];
-        Graph_add_edge(graph, source, dest, 0);
+        Graph_add_edge(graph, &edges[i][0], &edges[i][1], 0);
     }
 
     return NULL;

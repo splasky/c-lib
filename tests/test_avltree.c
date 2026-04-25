@@ -20,15 +20,15 @@ TEST(test_avltree)
     const int randTrials = 10000;
     AVLTreeNode* root = TREE_EMPTY;
 
-    for (int i = 0; i < n; ++i) {
-        int* data = malloc(sizeof(int));
-        *data = i;
-        int* key = malloc(sizeof(int));
-        *key = i;
+    int storage[1000];
+    for (int i = 0; i < 1000; ++i) {
+        storage[i] = i;
+    }
 
-        unit_assert(!avltreeContains(root, &i), "Test not contains failed");
-        avltreeInsert(&root, key, data, compare);
-        unit_assert(avltreeContains(root, &i), "Test not contains failed");
+    for (int i = 0; i < n; ++i) {
+        unit_assert(!avltreeContains(root, &storage[i]), "Test not contains failed");
+        avltreeInsert(&root, &storage[i], &storage[i], compare);
+        unit_assert(avltreeContains(root, &storage[i]), "Test not contains failed");
         avltreeSanityCheck(root);
         avltreePrint(root, print);
         printf("---\n");
@@ -36,9 +36,9 @@ TEST(test_avltree)
 
     /* delete everything */
     for (int i = 0; i < n; ++i) {
-        unit_assert(avltreeContains(root, &i), "Test contains failed");
-        avltreeDelete(&root, &i);
-        unit_assert(!avltreeContains(root, &i), "Test delete failed");
+        unit_assert(avltreeContains(root, &storage[i]), "Test contains failed");
+        avltreeDelete(&root, &storage[i]);
+        unit_assert(!avltreeContains(root, &storage[i]), "Test delete failed");
         avltreeSanityCheck(root);
         avltreePrint(root, print);
         printf("---\n");
@@ -49,13 +49,9 @@ TEST(test_avltree)
 
     srand(1);
     for (int i = 0; i < randTrials; i++) {
-        int* data = malloc(sizeof(int));
-        *data = rand() % randRange;
-        int* key = malloc(sizeof(int));
-        *key = rand() % randRange;
-
-        avltreeInsert(&root, key, data, compare);
-        avltreeDelete(&root, key);
+        int r = rand() % randRange;
+        avltreeInsert(&root, &storage[r], &storage[r], compare);
+        avltreeDelete(&root, &storage[r]);
     }
 
     avltreeSanityCheck(root);

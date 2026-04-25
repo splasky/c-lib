@@ -29,6 +29,7 @@ TEST(test_Differ)
     unit_assert(Differ(a, b) != 0, "test_Differ failed");
     struct String* c = Clone(a);
     unit_assert(Differ(a, c) == 0, "test_Differ failed");
+    Del(c);
     return NULL;
 }
 
@@ -36,12 +37,13 @@ TEST(test_Clone)
 {
     struct String* aa = Clone(a);
     unit_assert(Differ(a, aa) == 0, "test_Clone failed");
+    Del(aa);
     return NULL;
 }
 
 TEST(test_sizeOf)
 {
-    unit_assert(sizeOf(a) == sizeof(String), "test_sizeOf failed");
+    unit_assert(sizeOf(a) == sizeof(struct String), "test_sizeOf failed");
     return NULL;
 }
 

@@ -6,15 +6,29 @@
 
 TEST(test_malloc)
 {
-    int *array = my_malloc(10);
-    unit_assert(array[0] = 10, "Test malloc failed!");
-    array = my_realloc(array, 20);
-    unit_assert(array[11] = 10, "Test realloc failed!");
-    int* array2 = my_calloc(10, sizeof(int));
-    array2[9] = 10;
-    unit_assert(array[9] != 10, "Test calloc failed!");
-    my_free(array);
-    my_free(array2);
+    /* my_malloc / my_free use sbrk and a custom header; my_realloc / my_calloc
+     * use libc malloc internally. The two allocators are not interoperable, so
+     * each allocation is exercised and freed in isolation through its own path. */
+    int* a = my_malloc(10 * sizeof(int));
+    unit_assert(a, "Test my_malloc failed!");
+    a[0] = 10;
+    a[9] = 99;
+    unit_assert(a[0] == 10 && a[9] == 99, "Test my_malloc rw failed!");
+    my_free(a);
+
+    int* b = my_calloc(10, sizeof(int));
+    unit_assert(b, "Test my_calloc failed!");
+    unit_assert(b[0] == 0 && b[9] == 0, "Test my_calloc zero-init failed!");
+    b[9] = 42;
+    unit_assert(b[9] == 42, "Test my_calloc rw failed!");
+    free(b);
+
+    int* c = my_realloc(NULL, 5 * sizeof(int));
+    unit_assert(c, "Test my_realloc(NULL) failed!");
+    c[4] = 7;
+    unit_assert(c[4] == 7, "Test my_realloc rw failed!");
+    free(c);
+
     return NULL;
 }
 
