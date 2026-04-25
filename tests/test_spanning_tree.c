@@ -1,5 +1,5 @@
 #include "../include/dbg.h"
-#include "../include/list.h"
+#include "../include/linked_list.h"
 #include "unit.h"
 
 #define MAX_VERTICES 6

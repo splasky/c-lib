@@ -1,6 +1,6 @@
 #ifndef deque_H_X6402
 #define deque_H_X6402
-#include "list.h"
+#include "linked_list.h"
 
 typedef LinkedList Deque;
 

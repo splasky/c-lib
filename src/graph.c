@@ -1,6 +1,6 @@
 #include "../include/graph.h"
 #include "../include/dbg.h"
-#include "../include/list.h"
+#include "../include/linked_list.h"
 #include "../include/queue.h"
 #include "../include/stack.h"
 #include <stdint.h>

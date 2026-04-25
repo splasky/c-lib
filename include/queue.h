@@ -1,7 +1,7 @@
 #ifndef QUEUE_H_HTFODBQ3
 #define QUEUE_H_HTFODBQ3
 
-#include "list.h"
+#include "linked_list.h"
 typedef LinkedList Queue;
 
 #define New_Queue New_LinkedList

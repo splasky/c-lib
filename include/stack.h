@@ -1,7 +1,7 @@
 #ifndef STACK_H_LL2XHNA8
 #define STACK_H_LL2XHNA8
 
-#include "list.h"
+#include "linked_list.h"
 typedef LinkedList Stack;
 
 #define New_Stack New_LinkedList
