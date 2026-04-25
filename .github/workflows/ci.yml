@@ -33,9 +33,9 @@ jobs:
         run: |
           make CPU_TARGET=${{ matrix.cpu }} clean all
 
-      - name: Run tests with valgrind (make check)
+      - name: Run tests with valgrind (make test)
         run: |
-          make CPU_TARGET=${{ matrix.cpu }} check
+          make CPU_TARGET=${{ matrix.cpu }} test
 
   test-arm:
     name: Build ARM bare-metal (${{ matrix.cpu }})

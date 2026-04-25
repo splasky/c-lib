@@ -64,7 +64,7 @@ $(SHARED_LIB): $(PIC_OBJECTS)
 	@cd $(BUILD_DIR) && ln -sf $(notdir $(SHARED_LIB)) $(SHARED_SONAME) \
 		&& ln -sf $(SHARED_SONAME) $(notdir $(SHARED_LINK))
 
-.PHONY: all help test check coverage coverage_html clean info install uninstall static shared
+.PHONY: all help test coverage coverage_html clean info install uninstall static shared
 
 all: info $(STATIC_LIB)
 
@@ -127,10 +127,6 @@ test: $(ALL_OBJECTS)
 	done
 	@echo "All $(words $(ALL_TESTS)) tests passed$(if $(VALGRIND), (clean under valgrind),)."
 
-# `make check`: alias for `make test`. Runs the full test suite under valgrind.
-# This is the conventional GNU target name and is what CI invokes.
-check: test
-
 # `make coverage` and `coverage_html`: same as `test` but with --coverage instrumentation.
 coverage: $(COV_OBJECTS)
 	@echo "Running all tests with coverage instrumentation..."
@@ -176,7 +172,7 @@ uninstall:
 
 help:
 	@echo "c-lib v$(VERSION) - Targets:"
-	@echo "  make, static, shared, test, check, clean, info"
+	@echo "  make, static, shared, test, clean, info"
 	@echo "  coverage, coverage_html"
 	@echo "  install, uninstall"
 	@echo ""
