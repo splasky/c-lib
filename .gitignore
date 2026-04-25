@@ -59,3 +59,5 @@ dkms.conf
 **.log
 test_*
 !test_*.c
+build/
+coverage_html/
