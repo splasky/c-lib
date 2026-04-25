@@ -1,7 +1,14 @@
 # c-lib - CPU-optimized Makefile
 
 CC ?= gcc
-AR ?= ar
+# gcc-ar / gcc-ranlib understand LTO bytecode (.gnu.lto_*) sections in object
+# files. Plain `ar` silently drops them, breaking LTO for static-archive
+# consumers. Both wrappers fall through to plain ar/ranlib for non-LTO objects.
+AR ?= gcc-ar
+RANLIB ?= gcc-ranlib
+STRIP ?= strip
+OBJCOPY ?= objcopy
+SIZE ?= size
 RM ?= rm
 MKDIR ?= mkdir -p
 
@@ -28,10 +35,41 @@ ifeq ($(BUILD_TYPE),debug)
     LDFLAGS = -lm -fsanitize=address -fsanitize=undefined
     TARGET = c_lib-$(CPU_TARGET)-debug
 else
-    CFLAGS = -O3 -pipe -std=gnu2x -Wall -Wextra -Werror
-    LDFLAGS = -lm
+    # Aggressive size optimization for release builds.
+    #
+    # Compile-time:
+    #   -Os                              size > speed
+    #   -ffunction-sections              one section per function ...
+    #   -fdata-sections                  ... and per data object, so the linker
+    #                                    can drop unreferenced ones with --gc-sections
+    #   -fmerge-all-constants            fold identical constants
+    #   -fno-asynchronous-unwind-tables  drop .eh_frame_hdr / async unwind data
+    #   -fno-unwind-tables               drop .eh_frame entirely
+    #   -fno-stack-protector             drop canary thunks (we already validate inputs)
+    #   -fno-ident                       no GCC version string in .comment
+    #   -fno-plt                         smaller GOT for shared libs
+    #   -flto=auto                       cross-file inlining + dead-code elim
+    #
+    # Link-time:
+    #   --gc-sections                    drop sections nothing references
+    #   --as-needed                      only DT_NEEDED for libs we actually use
+    #   -O1                              linker peephole / hash-section opts
+    #   --hash-style=gnu                 smaller, faster than sysv
+    #   --build-id=none                  no .note.gnu.build-id
+    #   -z,now                           full eager bind, smaller .got.plt
+    CFLAGS = -Os -pipe -std=gnu2x -Wall -Wextra -Werror \
+             -ffunction-sections -fdata-sections \
+             -fmerge-all-constants \
+             -fno-asynchronous-unwind-tables -fno-unwind-tables \
+             -fno-stack-protector -fno-ident \
+             -fno-plt -flto=auto
+    LDFLAGS = -lm -flto=auto \
+              -Wl,--gc-sections -Wl,--as-needed \
+              -Wl,-O1 -Wl,--hash-style=gnu \
+              -Wl,--build-id=none -Wl,-z,now
     TARGET = c_lib-$(CPU_TARGET)-release
 endif
+
 
 # Coverage
 ifeq ($(COVERAGE),1)
@@ -56,25 +94,48 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c $(HEADERS) | $(BUILD_DIR)
 $(BUILD_DIR)/%.pic.o: $(SRC_DIR)/%.c $(HEADERS) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -fPIC $(INCLUDES) -c $< -o $@
 
+# `ar D` = deterministic archive (no timestamps/uid/gid) for reproducible /
+# slightly smaller output. Release builds also strip debug + non-essential
+# locals from each archive member and drop .comment / .note* sections.
 $(STATIC_LIB): $(OBJECTS)
-	$(AR) rcs $@ $^
+	$(AR) Drcs $@ $^
+ifneq ($(BUILD_TYPE),debug)
+	@$(STRIP) --strip-debug --strip-unneeded $@ 2>/dev/null || true
+	@$(OBJCOPY) --remove-section=.comment --remove-section=.note.* $@ 2>/dev/null || true
+endif
 
+# Shared lib: --strip-unneeded keeps .dynsym (required for runtime resolution)
+# but drops the static .symtab/.strtab and any local symbols.
 $(SHARED_LIB): $(PIC_OBJECTS)
 	$(CC) -shared -Wl,-soname,$(SHARED_SONAME) -o $@ $^ $(LDFLAGS)
+ifneq ($(BUILD_TYPE),debug)
+	@$(STRIP) --strip-unneeded $@
+	@$(OBJCOPY) --remove-section=.comment --remove-section=.note.* $@ 2>/dev/null || true
+endif
 	@cd $(BUILD_DIR) && ln -sf $(notdir $(SHARED_LIB)) $(SHARED_SONAME) \
 		&& ln -sf $(SHARED_SONAME) $(notdir $(SHARED_LINK))
 
-.PHONY: all help test coverage coverage_html clean info install uninstall static shared
+.PHONY: all help test coverage coverage_html clean info install uninstall static shared size
 
 all: info $(STATIC_LIB)
 
 static: info $(STATIC_LIB)
-	@echo "  Static : $(STATIC_LIB)"
+	@echo "  Static : $(STATIC_LIB) ($$(stat -c%s $(STATIC_LIB)) bytes)"
 
 shared: info $(SHARED_LIB)
-	@echo "  Shared : $(SHARED_LIB)"
+	@echo "  Shared : $(SHARED_LIB) ($$(stat -c%s $(SHARED_LIB)) bytes)"
 	@echo "  SONAME : $(SHARED_SONAME)"
 	@echo "  Link   : $(SHARED_LINK)"
+
+# `make size`: report per-section byte counts for whichever artifacts exist.
+size:
+	@for f in $(STATIC_LIB) $(SHARED_LIB); do \
+		if [ -f $$f ]; then \
+			echo "=== $$f ==="; \
+			$(SIZE) -A -d $$f 2>/dev/null | head -40 || $(SIZE) $$f; \
+			echo "  total: $$(stat -c%s $$f) bytes"; \
+		fi; \
+	done
 
 info:
 	@echo "c-lib v$(VERSION) - $(CPU_TARGET)"
@@ -172,9 +233,9 @@ uninstall:
 
 help:
 	@echo "c-lib v$(VERSION) - Targets:"
-	@echo "  make, static, shared, test, clean, info"
+	@echo "  make, static, shared, test, clean, info, size"
 	@echo "  coverage, coverage_html"
 	@echo "  install, uninstall"
 	@echo ""
 	@echo "  CPU_TARGET=zen3|zen2|generic"
-	@echo "  BUILD_TYPE=debug|release"
+	@echo "  BUILD_TYPE=debug|release  (release = -Os + LTO + gc-sections + strip)"
