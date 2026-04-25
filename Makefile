@@ -127,15 +127,25 @@ shared: info $(SHARED_LIB)
 	@echo "  SONAME : $(SHARED_SONAME)"
 	@echo "  Link   : $(SHARED_LINK)"
 
-# `make size`: report per-section byte counts for whichever artifacts exist.
-size:
+# `make size`: build both artifacts (if not already built) and report a concise
+# summary. Berkeley-format `size` shows text/data/bss totals per archive member
+# and per ELF for the shared lib; full per-section dumps from -ffunction-sections
+# are too noisy to be useful.
+size: $(STATIC_LIB) $(SHARED_LIB)
+	@echo "=== artifact sizes ($(BUILD_TYPE), $(CPU_TARGET)) ==="
 	@for f in $(STATIC_LIB) $(SHARED_LIB); do \
-		if [ -f $$f ]; then \
-			echo "=== $$f ==="; \
-			$(SIZE) -A -d $$f 2>/dev/null | head -40 || $(SIZE) $$f; \
-			echo "  total: $$(stat -c%s $$f) bytes"; \
-		fi; \
+		printf "  %-60s %10d bytes\n" "$$f" "$$(stat -c%s $$f)"; \
 	done
+	@echo ""
+	@echo "=== $(notdir $(SHARED_LIB)) sections ==="
+	@$(SIZE) $(SHARED_LIB)
+	@echo ""
+	@echo "=== $(notdir $(SHARED_LIB)) exported symbols ==="
+	@printf "  %d public symbol(s) in .dynsym\n" \
+		"$$(nm -D --defined-only $(SHARED_LIB) | grep -c ' T ')"
+	@echo ""
+	@echo "=== $(notdir $(STATIC_LIB)) member totals ==="
+	@$(SIZE) --totals $(STATIC_LIB) | tail -n +1
 
 info:
 	@echo "c-lib v$(VERSION) - $(CPU_TARGET)"

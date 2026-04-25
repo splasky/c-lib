@@ -109,27 +109,25 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc make
+          sudo apt-get install -y gcc binutils make
 
-      - name: Build release (${{ matrix.cpu }})
+      - name: Build release static + shared (${{ matrix.cpu }})
         run: |
-          make CPU_TARGET=${{ matrix.cpu }} clean all
+          make CPU_TARGET=${{ matrix.cpu }} BUILD_TYPE=release clean static
+          make CPU_TARGET=${{ matrix.cpu }} BUILD_TYPE=release shared
 
-      - name: Create artifacts directory
+      - name: Report artifact size
         run: |
-          mkdir -p artifacts/${{ matrix.cpu }}
+          make CPU_TARGET=${{ matrix.cpu }} BUILD_TYPE=release size
 
-      - name: Copy library
+      - name: Stage distribution layout
         run: |
-          cp build/${{ matrix.cpu }}/libc_lib-${{ matrix.cpu }}-release.a \
-            artifacts/${{ matrix.cpu }}/
-
-      - name: Copy headers
-        run: |
-          mkdir -p artifacts/${{ matrix.cpu }}/include
+          stage=artifacts/${{ matrix.cpu }}
+          mkdir -p $stage/lib $stage/include
+          cp build/${{ matrix.cpu }}/libc_lib-${{ matrix.cpu }}-release.a $stage/lib/
+          cp -P build/${{ matrix.cpu }}/libc_lib-${{ matrix.cpu }}-release.so* $stage/lib/
           cp include/base.h include/darray.h include/hashmap.h include/list.h \
-             include/rbtree.h include/types.h \
-             artifacts/${{ matrix.cpu }}/include/
+             include/rbtree.h include/types.h $stage/include/
 
       - name: Create distribution archive
         run: |
