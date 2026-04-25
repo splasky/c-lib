@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, master, develop]
+    branches: [master, dev]
   pull_request:
-    branches: [main, master, develop]
+    branches: [master, dev]
 
 jobs:
   test:
@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         cpu: [generic, zen2, zen3]
-        gcc_version: ['13']
+        gcc_version: ['15']
 
     steps:
       - name: Checkout code
@@ -31,62 +31,11 @@ jobs:
 
       - name: Build library (${{ matrix.cpu }})
         run: |
-          make -f Makefile.secure CPU_TARGET=${{ matrix.cpu }} clean all
+          make CPU_TARGET=${{ matrix.cpu }} clean all
 
-      - name: Compile tests
+      - name: Run tests with valgrind (make check)
         run: |
-          gcc -std=gnu2x -Wall -Wextra -g -Iinclude \
-            tests/secure/test_list.c build/${{ matrix.cpu }}/*.o \
-            -o build/${{ matrix.cpu }}/test_list
-          gcc -std=gnu2x -Wall -Wextra -g -Iinclude \
-            tests/secure/test_rbtree.c build/${{ matrix.cpu }}/*.o \
-            -o build/${{ matrix.cpu }}/test_rbtree
-          gcc -std=gnu2x -Wall -Wextra -g -Iinclude \
-            tests/secure/test_hashmap.c build/${{ matrix.cpu }}/*.o \
-            -o build/${{ matrix.cpu }}/test_hashmap
-          gcc -std=gnu2x -Wall -Wextra -g -Iinclude \
-            tests/secure/test_darray.c build/${{ matrix.cpu }}/*.o \
-            -o build/${{ matrix.cpu }}/test_darray
-
-      - name: Run List tests
-        run: |
-          echo "=== List Tests ==="
-          ./build/${{ matrix.cpu }}/test_list
-
-      - name: Run Rbtree tests
-        run: |
-          echo "=== Rbtree Tests ==="
-          ./build/${{ matrix.cpu }}/test_rbtree
-
-      - name: Run Hashmap tests
-        run: |
-          echo "=== Hashmap Tests ==="
-          ./build/${{ matrix.cpu }}/test_hashmap
-
-      - name: Run Darray tests
-        run: |
-          echo "=== Darray Tests ==="
-          ./build/${{ matrix.cpu }}/test_darray
-
-      - name: Memory leak check - List
-        run: |
-          valgrind --leak-check=full --error-exitcode=1 \
-            ./build/${{ matrix.cpu }}/test_list
-
-      - name: Memory leak check - Rbtree
-        run: |
-          valgrind --leak-check=full --error-exitcode=1 \
-            ./build/${{ matrix.cpu }}/test_rbtree
-
-      - name: Memory leak check - Hashmap
-        run: |
-          valgrind --leak-check=full --error-exitcode=1 \
-            ./build/${{ matrix.cpu }}/test_hashmap
-
-      - name: Memory leak check - Darray
-        run: |
-          valgrind --leak-check=full --error-exitcode=1 \
-            ./build/${{ matrix.cpu }}/test_darray
+          make CPU_TARGET=${{ matrix.cpu }} check
 
   test-arm:
     name: Build ARM bare-metal (${{ matrix.cpu }})
@@ -111,7 +60,7 @@ jobs:
 
       - name: Build library (${{ matrix.cpu }})
         run: |
-          make -f Makefile.secure CPU_TARGET=${{ matrix.cpu }} clean all
+          make CPU_TARGET=${{ matrix.cpu }} clean all
 
       - name: Verify ARM ELF output
         run: |
@@ -164,7 +113,7 @@ jobs:
 
       - name: Build release (${{ matrix.cpu }})
         run: |
-          make -f Makefile.secure CPU_TARGET=${{ matrix.cpu }} clean all
+          make CPU_TARGET=${{ matrix.cpu }} clean all
 
       - name: Create artifacts directory
         run: |
@@ -172,24 +121,27 @@ jobs:
 
       - name: Copy library
         run: |
-          cp build/${{ matrix.cpu }}/libmylib-${{ matrix.cpu }}-release.a \
+          cp build/${{ matrix.cpu }}/libc_lib-${{ matrix.cpu }}-release.a \
             artifacts/${{ matrix.cpu }}/
 
       - name: Copy headers
         run: |
-          cp -r include/mylib artifacts/${{ matrix.cpu }}/
+          mkdir -p artifacts/${{ matrix.cpu }}/include
+          cp include/base.h include/darray.h include/hashmap.h include/list.h \
+             include/rbtree.h include/types.h \
+             artifacts/${{ matrix.cpu }}/include/
 
       - name: Create distribution archive
         run: |
           cd artifacts/${{ matrix.cpu }}
-          tar -czf ../../mylib-${{ matrix.cpu }}-linux.tar.gz .
+          tar -czf ../../c_lib-${{ matrix.cpu }}-linux.tar.gz .
           cd ../..
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mylib-${{ matrix.cpu }}-linux
-          path: mylib-${{ matrix.cpu }}-linux.tar.gz
+          name: c_lib-${{ matrix.cpu }}-linux
+          path: c_lib-${{ matrix.cpu }}-linux.tar.gz
 
   release:
     name: Create Release
@@ -219,7 +171,7 @@ jobs:
             cpu=$(basename "$dir")
             cp "$dir"*.tar.gz release/
           done
-          tar -czf mylib-all-platforms.tar.gz release/
+          tar -czf c_lib-all-platforms.tar.gz release/
           ls -la release/
 
       - name: Create GitHub Release
