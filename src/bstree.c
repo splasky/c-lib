@@ -212,7 +212,7 @@ static inline void BSTreeNode_swap(BSTreeNode* a, BSTreeNode* b)
 
     tmp = a->data;
     a->data = b->data;
-    b->data = a->data;
+    b->data = tmp;
 }
 
 static inline void BSTreeNode_replace_node_in_parent(
@@ -278,6 +278,7 @@ void* BSTree_delete(BSTree* bstree, void* key)
         BSTreeNode* tmp_node = BSTreeNode_delete(bstree, bstree->root, key);
         if (tmp_node) {
             data = tmp_node->data;
+            free(tmp_node->key);
             free(tmp_node);
             tmp_node = NULL;
         }

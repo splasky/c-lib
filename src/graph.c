@@ -54,29 +54,16 @@ error:
 
 static inline void AdjList_destory(AdjList* adjlist)
 {
-    if (!adjlist->head) {
-        goto finally;
+    if (!adjlist) {
+        return;
     }
-
     AdjListNode* curr = adjlist->head;
-    while (curr->next) {
-        AdjListNode* prev = curr;
-        curr = curr->next;
-        if (prev) {
-            if (prev->dest) {
-                free(prev->dest);
-                prev->dest = NULL;
-            }
-            free(prev);
-            prev = NULL;
-        }
+    while (curr) {
+        AdjListNode* next = curr->next;
+        free(curr);
+        curr = next;
     }
-
-    free(curr);
-    curr = NULL;
-finally:
     free(adjlist);
-    adjlist = NULL;
 }
 
 static int int_compare(const void* a, const void* b)
@@ -232,20 +219,15 @@ void Graph_add_edge(Graph* graph, void* source, void* dest, int weight)
 void Graph_destory(Graph* graph)
 {
     if (!graph) {
-        goto finally;
+        return;
     }
-
     AdjList* curr_list = graph->adjlist;
-    while (curr_list->next) {
-        AdjList* prev = curr_list;
-        curr_list = curr_list->next;
-        free(prev);
-        prev = NULL;
+    while (curr_list) {
+        AdjList* next = curr_list->next;
+        AdjList_destory(curr_list);
+        curr_list = next;
     }
-
     free(graph);
-finally:
-    graph = NULL;
 }
 
 bool Graph_has_edge(Graph* graph, void* source, void* dest)

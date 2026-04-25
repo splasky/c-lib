@@ -146,7 +146,9 @@ char* inverseBWT(size_t len, const char* string)
         ret[i] = string[thread];
     }
 
+    free(successor);
     return ret;
 error:
+    free(successor);
     return NULL;
 }

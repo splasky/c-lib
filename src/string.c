@@ -5,11 +5,6 @@
 #include <assert.h>
 #include <string.h>
 
-struct String {
-    const void* class;
-    char* text;
-};
-
 static void* String_Constructor(void* _self, va_list* valist)
 {
     struct String* self = _self;
@@ -47,7 +42,7 @@ static int String_Differ(const void* _self, const void* _b)
     return strncmp(self->text, b->text, strlen(self->text));
 }
 
-static const Class _String = { sizeof(String), String_Constructor, String_Destructor,
-    String_Clone, String_Differ };
+static const Class _String = { sizeof(struct String), String_Constructor,
+    String_Destructor, String_Clone, String_Differ };
 
 const void* String = &_String;

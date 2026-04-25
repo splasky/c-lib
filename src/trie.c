@@ -107,6 +107,7 @@ Trie* trie_insert(Trie* trie, const char* key)
     /* split */
     t->kids[bit_value] = make_trie_node(key);
     t->kids[!bit_value] = make_trie_node(old_key);
+    free((char*)old_key);
     return trie;
 }
 
