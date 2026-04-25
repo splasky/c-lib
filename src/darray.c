@@ -1,161 +1,262 @@
-#include "../include/darray.h"
-#include "../include/dbg.h"
+#include "darray.h"
 #include <stdlib.h>
+#include <stdbool.h>
+#include <string.h>
 
-Darray* Darray_create(size_t element_size, size_t initial_max)
+c_lib_darray *c_lib_darray_create(c_lib_size_t initial_capacity)
 {
-    Darray* darray = malloc(sizeof(Darray));
-    check_mem(darray);
-    check(initial_max > 0, "You must set an initial_max>0");
-    darray->max = initial_max;
+    if (initial_capacity == 0)
+        initial_capacity = C_LIB_DARRAY_DEFAULT_CAPACITY;
 
-    darray->contents = calloc(initial_max, sizeof(void*));
-    check_mem(darray->contents);
+    c_lib_darray *arr = calloc(1, sizeof(*arr));
+    if (C_LIB_UNLIKELY(arr == NULL))
+        return NULL;
 
-    darray->end = 0;
-    darray->element_size = element_size;
-    darray->expand_rate = DEFAULT_EXPAND_RATE;
+    arr->data = calloc(initial_capacity, sizeof(*arr->data));
+    if (C_LIB_UNLIKELY(arr->data == NULL)) {
+        free(arr);
+        return NULL;
+    }
 
-    return darray;
-error:
-    if (darray)
-        free(darray);
-    return NULL;
+    arr->size = 0;
+    arr->capacity = initial_capacity;
+
+    return arr;
 }
 
-void Darray_destroy(Darray* darray)
+void c_lib_darray_destroy(c_lib_darray *arr)
 {
-    if (darray) {
-        if (darray->contents) {
-            free(darray->contents);
+    if (arr == NULL)
+        return;
+    free(arr->data);
+    free(arr);
+}
+
+void c_lib_darray_destroy_with(c_lib_darray *arr, void (*free_fn)(void *))
+{
+    if (arr == NULL)
+        return;
+    if (free_fn != NULL) {
+        for (c_lib_size_t i = 0; i < arr->size; i++) {
+            if (arr->data[i] != NULL)
+                free_fn(arr->data[i]);
         }
-        free(darray);
     }
+    free(arr->data);
+    free(arr);
 }
 
-void Darray_clear(Darray* darray)
+void c_lib_darray_clear(c_lib_darray *arr)
 {
-    if (darray->element_size > 0) {
-        for (int i = 0; i < Darray_max(darray); ++i) {
-            if (darray->contents[i]) {
-                free(darray->contents[i]);
-            }
+    if (arr == NULL)
+        return;
+    memset(arr->data, 0, arr->size * sizeof(*arr->data));
+    arr->size = 0;
+}
+
+void c_lib_darray_clear_with(c_lib_darray *arr, void (*free_fn)(void *))
+{
+    if (arr == NULL)
+        return;
+
+    if (free_fn != NULL) {
+        for (c_lib_size_t i = 0; i < arr->size; i++) {
+            if (arr->data[i] != NULL)
+                free_fn(arr->data[i]);
         }
     }
+
+    memset(arr->data, 0, arr->size * sizeof(*arr->data));
+    arr->size = 0;
 }
 
-static inline int Darray_resize(Darray* darray, size_t new_size)
+static bool darray_grow(c_lib_darray *arr)
 {
-    darray->max = new_size;
-    check(darray->max > 0, "The new size must be > 0.");
+    c_lib_size_t new_capacity = arr->capacity * C_LIB_DARRAY_GROWTH_FACTOR;
 
-    void* contents = realloc(darray->contents, darray->max * sizeof(void*));
+    if (new_capacity < arr->capacity)
+        return false;
 
-    check_mem(contents);
-    darray->contents = contents;
-    return 0;
-error:
-    return -1;
+    void **new_data = realloc(arr->data, new_capacity * sizeof(*arr->data));
+    if (C_LIB_UNLIKELY(new_data == NULL))
+        return false;
+
+    memset(new_data + arr->capacity, 0,
+           (new_capacity - arr->capacity) * sizeof(*new_data));
+
+    arr->data = new_data;
+    arr->capacity = new_capacity;
+
+    return true;
 }
 
-int Darray_expand(Darray* darray)
+bool c_lib_darray_push(c_lib_darray *arr, void *value)
 {
-    size_t old_max = darray->max;
-    check(Darray_resize(darray, darray->max + darray->expand_rate) == 0,
-        "Failed to expand darray to new size: %d",
-        darray->max + (int)darray->expand_rate);
+    if (C_LIB_UNLIKELY(arr == NULL))
+        return false;
 
-    memset(darray->contents + old_max, 0, darray->expand_rate + 1);
-    return 0;
-
-error:
-    return -1;
-}
-
-int Darray_contract(Darray* darray)
-{
-    int new_size
-        = darray->end < (int)darray->expand_rate ? (int)darray->expand_rate : darray->end;
-
-    return Darray_resize(darray, new_size + 1);
-}
-
-int Darray_push(Darray* darray, void* data)
-{
-    darray->contents[darray->end] = data;
-    darray->end++;
-
-    if (Darray_count(darray) >= Darray_max(darray)) {
-        return Darray_expand(darray);
+    if (arr->size >= arr->capacity) {
+        if (!darray_grow(arr))
+            return false;
     }
 
-    return 0;
+    arr->data[arr->size++] = value;
+    return true;
 }
 
-void* Darray_pop(Darray* darray)
+void *c_lib_darray_pop(c_lib_darray *arr)
 {
-    check(darray->end - 1 >= 0, "Attempt to pop from empty array");
+    if (C_LIB_UNLIKELY(arr == NULL || arr->size == 0))
+        return NULL;
 
-    void* data = Darray_remove(darray, darray->end - 1);
-    darray->end--;
+    return arr->data[--arr->size];
+}
 
-    if (Darray_count(darray) > (int)darray->expand_rate
-        && Darray_count(darray) % darray->expand_rate) {
-        Darray_contract(darray);
+void *c_lib_darray_peek(const c_lib_darray *arr)
+{
+    if (C_LIB_UNLIKELY(arr == NULL || arr->size == 0))
+        return NULL;
+
+    return arr->data[arr->size - 1];
+}
+
+bool c_lib_darray_set(c_lib_darray *arr, c_lib_size_t index, void *value)
+{
+    if (C_LIB_UNLIKELY(arr == NULL || index >= arr->size))
+        return false;
+
+    arr->data[index] = value;
+    return true;
+}
+
+void *c_lib_darray_get(const c_lib_darray *arr, c_lib_size_t index)
+{
+    if (C_LIB_UNLIKELY(arr == NULL || index >= arr->size))
+        return NULL;
+
+    return arr->data[index];
+}
+
+void *c_lib_darray_take(c_lib_darray *arr, c_lib_size_t index)
+{
+    if (C_LIB_UNLIKELY(arr == NULL || index >= arr->size))
+        return NULL;
+
+    void *value = arr->data[index];
+    arr->data[index] = NULL;
+    return value;
+}
+
+bool c_lib_darray_insert(c_lib_darray *arr, c_lib_size_t index, void *value)
+{
+    if (C_LIB_UNLIKELY(arr == NULL || index > arr->size))
+        return false;
+
+    if (arr->size >= arr->capacity) {
+        if (!darray_grow(arr))
+            return false;
     }
 
-    return data;
-error:
-    return NULL;
-}
-
-void Darray_clear_destroy(Darray* darray)
-{
-    Darray_clear(darray);
-    Darray_destroy(darray);
-}
-
-void Darray_set(Darray* darray, int index, void* data)
-{
-    check(index < darray->max, "darray attempt to get past max");
-    if (index > darray->end) {
-        darray->end = index;
+    if (index < arr->size) {
+        memmove(arr->data + index + 1, arr->data + index,
+                (arr->size - index) * sizeof(*arr->data));
     }
 
-    darray->contents[index] = data;
-
-error:
-    return;
+    arr->data[index] = value;
+    arr->size++;
+    return true;
 }
 
-void* Darray_get(Darray* darray, int index)
+void *c_lib_darray_remove(c_lib_darray *arr, c_lib_size_t index)
 {
-    check(index < darray->max, "darray attempt to get past max");
+    if (C_LIB_UNLIKELY(arr == NULL || index >= arr->size))
+        return NULL;
 
-    return darray->contents[index];
-error:
-    return NULL;
+    void *value = arr->data[index];
+
+    if (index < arr->size - 1) {
+        memmove(arr->data + index, arr->data + index + 1,
+                (arr->size - index - 1) * sizeof(*arr->data));
+    }
+
+    arr->size--;
+    arr->data[arr->size] = NULL;
+
+    return value;
 }
 
-void* Darray_remove(Darray* darray, int index)
+bool c_lib_darray_erase(c_lib_darray *arr, c_lib_size_t index, c_lib_size_t count)
 {
-    void* data = darray->contents[index];
-    darray->contents[index] = NULL;
+    if (C_LIB_UNLIKELY(arr == NULL || index >= arr->size))
+        return false;
 
-    return data;
+    if (index + count > arr->size)
+        count = arr->size - index;
+
+    if (index + count < arr->size) {
+        memmove(arr->data + index, arr->data + index + count,
+                (arr->size - index - count) * sizeof(*arr->data));
+    }
+
+    memset(arr->data + arr->size - count, 0, count * sizeof(*arr->data));
+    arr->size -= count;
+
+    return true;
 }
 
-void* Darray_new(Darray* darray)
+c_lib_size_t c_lib_darray_size(const c_lib_darray *arr)
 {
-    check(darray->element_size > 0, "Can't use Darray_new on 0 size Darrays");
-
-    return calloc(1, darray->element_size);
-error:
-    return NULL;
+    return arr != NULL ? arr->size : 0;
 }
 
-int Darray_qsort(Darray* darray, Darray_compare cmp)
+c_lib_size_t c_lib_darray_capacity(const c_lib_darray *arr)
 {
-    qsort(darray->contents, Darray_count(darray), sizeof(void*), cmp);
-    return 0;
+    return arr != NULL ? arr->capacity : 0;
+}
+
+bool c_lib_darray_is_empty(const c_lib_darray *arr)
+{
+    return arr == NULL || arr->size == 0;
+}
+
+bool c_lib_darray_reserve(c_lib_darray *arr, c_lib_size_t capacity)
+{
+    if (C_LIB_UNLIKELY(arr == NULL))
+        return false;
+
+    if (capacity <= arr->capacity)
+        return true;
+
+    void **new_data = realloc(arr->data, capacity * sizeof(*arr->data));
+    if (C_LIB_UNLIKELY(new_data == NULL))
+        return false;
+
+    memset(new_data + arr->capacity, 0,
+           (capacity - arr->capacity) * sizeof(*new_data));
+
+    arr->data = new_data;
+    arr->capacity = capacity;
+
+    return true;
+}
+
+void c_lib_darray_shrink_to_fit(c_lib_darray *arr)
+{
+    if (C_LIB_UNLIKELY(arr == NULL || arr->size == arr->capacity))
+        return;
+
+    void **new_data = realloc(arr->data, arr->size * sizeof(*arr->data));
+    if (C_LIB_UNLIKELY(new_data == NULL))
+        return;
+
+    arr->data = new_data;
+    arr->capacity = arr->size;
+}
+
+void c_lib_darray_sort(c_lib_darray *arr, c_lib_darray_cmp cmp)
+{
+    if (C_LIB_UNLIKELY(arr == NULL || cmp == NULL || arr->size <= 1))
+        return;
+
+    qsort(arr->data, arr->size, sizeof(*arr->data), cmp);
 }

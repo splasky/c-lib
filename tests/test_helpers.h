@@ -1,5 +1,5 @@
-#ifndef MYLIB_TEST_HELPERS_H
-#define MYLIB_TEST_HELPERS_H
+#ifndef C_LIB_TEST_HELPERS_H
+#define C_LIB_TEST_HELPERS_H
 
 #include <stdio.h>
 #include <stdlib.h>

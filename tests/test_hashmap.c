@@ -1,73 +1,211 @@
-#include "../include/hashmap.h"
-#include "unit.h"
+#include "hashmap.h"
+#include "test_helpers.h"
 
-static int traverse_print(Hashmap_node* node)
+static int test_hashmap_create_destroy(void)
 {
-    debug("Key %s", *(char**)node->data);
-    return 1;
+    c_lib_hashmap *map = c_lib_hashmap_create(16);
+    TEST_ASSERT_NOT_NULL(map, "Hashmap create failed");
+    TEST_ASSERT(c_lib_hashmap_is_empty(map), "New hashmap should be empty");
+
+    c_lib_hashmap_destroy(map);
+    return 0;
 }
 
-TEST(test_hashmap)
+static int test_hashmap_put_get(void)
 {
+    c_lib_hashmap *map = c_lib_hashmap_create(16);
+    const char *key1 = "key1";
+    const char *key2 = "key2";
+    int val1 = 100, val2 = 200;
 
-    Hashmap* map = Hashmap_create(NULL, NULL);
-    unit_assert(map != NULL, "Failed to create map.");
+    TEST_ASSERT(c_lib_hashmap_put(map, key1, strlen(key1), &val1), "Put key1 failed");
+    TEST_ASSERT(!c_lib_hashmap_is_empty(map), "Hashmap should not be empty");
 
-    static const char* s1 = "Hello world";
-    static const char* s2 = "Ya Ya Ya";
-    static const char* s3 = "Have a nice day";
+    TEST_ASSERT(c_lib_hashmap_put(map, key2, strlen(key2), &val2), "Put key2 failed");
 
-    static const char* key1 = "s1";
-    static const char* key2 = "s2";
-    static const char* key3 = "s3";
+    int *result = c_lib_hashmap_get(map, key1, strlen(key1));
+    TEST_ASSERT_NOT_NULL(result, "Get key1 failed");
+    TEST_ASSERT_EQ(*result, 100, "Value should be 100");
 
-    int rc = 0;
-    void* result;
-    rc = Hashmap_set(map, &key1, &s1);
-    unit_assert(rc == 0, "Failed to set s1");
-    result = Hashmap_get(map, &key1);
-    unit_assert(strcmp(*(char**)result, s1) == 0, "Wrong value for s1.");
+    result = c_lib_hashmap_get(map, key2, strlen(key2));
+    TEST_ASSERT_NOT_NULL(result, "Get key2 failed");
+    TEST_ASSERT_EQ(*result, 200, "Value should be 200");
 
-    rc = Hashmap_set(map, &key2, &s2);
-    unit_assert(rc == 0, "Failed to set s2");
-    result = Hashmap_get(map, &key2);
-    unit_assert(strcmp(*(char**)result, s2) == 0, "Wrong value for s2.");
-
-    rc = Hashmap_set(map, &key3, &s3);
-    unit_assert(rc == 0, "Failed to set s3");
-    result = Hashmap_get(map, &key3);
-    unit_assert(strcmp(*(char**)result, s3) == 0, "Wrong value for s3.");
-
-    rc = Hashmap_traverse(map, traverse_print);
-    unit_assert(rc == 0, "Failed to traverse.");
-
-    result = Hashmap_remove(map, &key1);
-    unit_assert(*(char**)result != NULL, "Got NULL on delete");
-    unit_assert(strcmp(*(char**)result, s1) == 0, "Should get s1");
-    result = Hashmap_get(map, &key1);
-    unit_assert(result == NULL, "Should deleted");
-
-    result = Hashmap_remove(map, &key2);
-    unit_assert(*(char**)result != NULL, "Got NULL on delete");
-    unit_assert(strcmp(*(char**)result, s2) == 0, "Should get s2");
-    result = Hashmap_get(map, &key2);
-    unit_assert(result == NULL, "Should deleted");
-
-    result = Hashmap_remove(map, &key3);
-    unit_assert(*(char**)result != NULL, "Got NULL on delete");
-    unit_assert(strcmp(*(char**)result, s3) == 0, "Should get s3");
-    result = Hashmap_get(map, &key3);
-    unit_assert(result == NULL, "Should deleted");
-
-    Hashmap_destroy(map);
-    return NULL;
+    c_lib_hashmap_destroy(map);
+    return 0;
 }
 
-TEST(all_tests)
+static int test_hashmap_update(void)
 {
-    unit_suite_start();
-    unit_run_test(test_hashmap);
-    return NULL;
+    c_lib_hashmap *map = c_lib_hashmap_create(16);
+    const char *key = "key";
+    int val1 = 100, val2 = 200, val3 = 300;
+
+    c_lib_hashmap_put(map, key, strlen(key), &val1);
+    int *result = c_lib_hashmap_get(map, key, strlen(key));
+    TEST_ASSERT_EQ(*result, 100, "Initial value should be 100");
+
+    c_lib_hashmap_put(map, key, strlen(key), &val2);
+    result = c_lib_hashmap_get(map, key, strlen(key));
+    TEST_ASSERT_EQ(*result, 200, "Value should be updated to 200");
+
+    c_lib_hashmap_put(map, key, strlen(key), &val3);
+    result = c_lib_hashmap_get(map, key, strlen(key));
+    TEST_ASSERT_EQ(*result, 300, "Value should be updated to 300");
+
+    c_lib_hashmap_destroy(map);
+    return 0;
 }
 
-RUN_TESTS(all_tests);
+static int test_hashmap_remove(void)
+{
+    c_lib_hashmap *map = c_lib_hashmap_create(16);
+    const char *key = "key";
+    int val = 100;
+
+    c_lib_hashmap_put(map, key, strlen(key), &val);
+    TEST_ASSERT_EQ(c_lib_hashmap_count(map), (size_t)1, "Count should be 1");
+
+    void *removed = c_lib_hashmap_remove(map, key, strlen(key));
+    TEST_ASSERT_NOT_NULL(removed, "Remove should return value");
+    TEST_ASSERT_EQ(c_lib_hashmap_count(map), (size_t)0, "Count should be 0");
+
+    void *result = c_lib_hashmap_get(map, key, strlen(key));
+    TEST_ASSERT_NULL(result, "Get after remove should return NULL");
+
+    c_lib_hashmap_destroy(map);
+    return 0;
+}
+
+static int test_hashmap_contains(void)
+{
+    c_lib_hashmap *map = c_lib_hashmap_create(16);
+    const char *key = "key";
+    int val = 100;
+
+    TEST_ASSERT(!c_lib_hashmap_contains(map, key, strlen(key)), "Contains should be false");
+
+    c_lib_hashmap_put(map, key, strlen(key), &val);
+    TEST_ASSERT(c_lib_hashmap_contains(map, key, strlen(key)), "Contains should be true");
+
+    c_lib_hashmap_remove(map, key, strlen(key));
+    TEST_ASSERT(!c_lib_hashmap_contains(map, key, strlen(key)), "Contains should be false after remove");
+
+    c_lib_hashmap_destroy(map);
+    return 0;
+}
+
+static int test_hashmap_many_insertions(void)
+{
+    c_lib_hashmap *map = c_lib_hashmap_create(32);
+    char keys[1000][32];
+    int vals[1000];
+
+    for (int i = 0; i < 1000; i++) {
+        snprintf(keys[i], sizeof(keys[i]), "key%d", i);
+        vals[i] = i * 100;
+        TEST_ASSERT(c_lib_hashmap_put(map, keys[i], strlen(keys[i]), &vals[i]), "Put failed");
+    }
+
+    TEST_ASSERT_EQ(c_lib_hashmap_count(map), (size_t)1000, "Count should be 1000");
+
+    for (int i = 0; i < 1000; i++) {
+        int *result = c_lib_hashmap_get(map, keys[i], strlen(keys[i]));
+        if (result == NULL) {
+            fprintf(stderr, "FAIL at i=%d: key=%s\n", i, keys[i]);
+        }
+        TEST_ASSERT_NOT_NULL(result, "Get failed");
+        TEST_ASSERT_EQ(*result, vals[i], "Value mismatch");
+    }
+
+    c_lib_hashmap_destroy(map);
+    return 0;
+}
+
+static int test_hashmap_resize(void)
+{
+    c_lib_hashmap *map = c_lib_hashmap_create(8);
+    char keys[100][32];
+    int vals[100];
+
+    for (int i = 0; i < 100; i++) {
+        snprintf(keys[i], sizeof(keys[i]), "key%d", i);
+        vals[i] = i;
+        TEST_ASSERT(c_lib_hashmap_put(map, keys[i], strlen(keys[i]), &vals[i]), "Put failed after resize");
+    }
+
+    for (int i = 0; i < 100; i++) {
+        int *result = c_lib_hashmap_get(map, keys[i], strlen(keys[i]));
+        TEST_ASSERT_NOT_NULL(result, "Get after resize failed");
+        TEST_ASSERT_EQ(*result, vals[i], "Value mismatch after resize");
+    }
+
+    c_lib_hashmap_destroy(map);
+    return 0;
+}
+
+static bool visit_count(const void *key, c_lib_size_t keylen, void *value, void *userdata)
+{
+    (void)key;
+    (void)keylen;
+    (void)value;
+    int *count = (int *)userdata;
+    (*count)++;
+    return true;
+}
+
+static int test_hashmap_foreach(void)
+{
+    c_lib_hashmap *map = c_lib_hashmap_create(16);
+    int visited = 0;
+
+    for (int i = 0; i < 10; i++) {
+        char key[32];
+        snprintf(key, sizeof(key), "key%d", i);
+        c_lib_hashmap_put(map, key, strlen(key), &i);
+    }
+
+    bool ok = c_lib_hashmap_foreach(map, visit_count, &visited);
+    TEST_ASSERT(ok, "Foreach should succeed");
+    TEST_ASSERT_EQ(visited, 10, "Should have visited 10 items");
+
+    c_lib_hashmap_destroy(map);
+    return 0;
+}
+
+static int test_hashmap_null_handling(void)
+{
+    c_lib_hashmap_destroy(NULL);
+    c_lib_hashmap_clear(NULL);
+    c_lib_hashmap_count(NULL);
+    TEST_ASSERT(c_lib_hashmap_is_empty(NULL), "NULL hashmap should be empty");
+    TEST_ASSERT_NULL(c_lib_hashmap_get(NULL, NULL, 0), "Get NULL should return NULL");
+    TEST_ASSERT(!c_lib_hashmap_put(NULL, NULL, 0, NULL), "Put NULL should fail");
+    TEST_ASSERT_NULL(c_lib_hashmap_remove(NULL, NULL, 0), "Remove NULL should fail");
+    TEST_ASSERT(!c_lib_hashmap_contains(NULL, NULL, 0), "Contains NULL should return false");
+    TEST_ASSERT(!c_lib_hashmap_foreach(NULL, NULL, NULL), "Foreach NULL should fail");
+
+    {
+        c_lib_hashmap *tmp = c_lib_hashmap_create(0);
+        TEST_ASSERT_NOT_NULL(tmp, "Create with 0 capacity should use default");
+        c_lib_hashmap_destroy(tmp);
+    }
+    return 0;
+}
+
+int main(void)
+{
+    TEST_SETUP_NAME("Hashmap Tests");
+
+    RUN_TEST(test_hashmap_create_destroy);
+    RUN_TEST(test_hashmap_put_get);
+    RUN_TEST(test_hashmap_update);
+    RUN_TEST(test_hashmap_remove);
+    RUN_TEST(test_hashmap_contains);
+    RUN_TEST(test_hashmap_many_insertions);
+    RUN_TEST(test_hashmap_resize);
+    RUN_TEST(test_hashmap_foreach);
+    RUN_TEST(test_hashmap_null_handling);
+
+    TEST_SUMMARY();
+}

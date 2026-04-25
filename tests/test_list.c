@@ -1,181 +1,219 @@
-#include "../include/list.h"
-#include "../include/list_algos.h"
-#include "unit.h"
-#include <stdint.h>
+#include "list.h"
+#include "test_helpers.h"
 
-static LinkedList* list = NULL;
-char* test1 = "test1";
-char* test2 = "test2";
-char* test3 = "test3";
-
-TEST(test_create)
+static int test_list_create_destroy(void)
 {
-    list = New_LinkedList();
-    unit_assert(list != NULL, "Create linked list error");
-    return NULL;
+    c_lib_list *list = c_lib_list_create();
+    TEST_ASSERT_NOT_NULL(list, "List create failed");
+    TEST_ASSERT_EQ(c_lib_list_count(list), (size_t)0, "Count should be 0");
+    c_lib_list_destroy(list);
+    return 0;
 }
 
-TEST(test_destory)
+static int test_list_push_pop(void)
 {
-    LinkedList_destory(list);
-    return NULL;
+    c_lib_list *list = c_lib_list_create();
+    TEST_ASSERT_NOT_NULL(list, "List create failed");
+
+    int a = 1, b = 2, c = 3;
+
+    c_lib_list_push(list, &a);
+    TEST_ASSERT_EQ(c_lib_list_count(list), (size_t)1, "Count should be 1");
+
+    c_lib_list_push(list, &b);
+    TEST_ASSERT_EQ(c_lib_list_count(list), (size_t)2, "Count should be 2");
+
+    c_lib_list_push(list, &c);
+    TEST_ASSERT_EQ(c_lib_list_count(list), (size_t)3, "Count should be 3");
+
+    int *val = c_lib_list_pop(list);
+    TEST_ASSERT_EQ(*val, 3, "Pop should return 3");
+    TEST_ASSERT_EQ(c_lib_list_count(list), (size_t)2, "Count should be 2");
+
+    val = c_lib_list_pop(list);
+    TEST_ASSERT_EQ(*val, 2, "Pop should return 2");
+
+    val = c_lib_list_pop(list);
+    TEST_ASSERT_EQ(*val, 1, "Pop should return 1");
+
+    val = c_lib_list_pop(list);
+    TEST_ASSERT_NULL(val, "Pop from empty should return NULL");
+
+    c_lib_list_destroy(list);
+    return 0;
 }
 
-LinkedList* SetTestingList(int size)
+static int test_list_push_front(void)
 {
-    LinkedList* llist = New_LinkedList();
+    c_lib_list *list = c_lib_list_create();
+    int a = 1, b = 2, c = 3;
 
-    for (int i = 0; i < size; i++)
-    {
-        int* p = calloc(1, sizeof(int));
-        *p = i;
-        LinkedList_push(llist, p);
+    c_lib_list_push_front(list, &a);
+    c_lib_list_push_front(list, &b);
+    c_lib_list_push_front(list, &c);
+
+    int *val = c_lib_list_pop(list);
+    TEST_ASSERT_EQ(*val, 1, "Pop should return 1 (c was pushed last)");
+
+    c_lib_list_destroy(list);
+    return 0;
+}
+
+static int test_list_get(void)
+{
+    c_lib_list *list = c_lib_list_create();
+    int vals[5] = {10, 20, 30, 40, 50};
+
+    for (int i = 0; i < 5; i++)
+        c_lib_list_push(list, &vals[i]);
+
+    for (int i = 0; i < 5; i++) {
+        int *v = c_lib_list_get(list, (size_t)i);
+        TEST_ASSERT_EQ(*v, vals[i], "Get returned wrong value");
     }
 
-    return llist;
+    void *v = c_lib_list_get(list, 100);
+    TEST_ASSERT_NULL(v, "Get out of bounds should return NULL");
+
+    c_lib_list_destroy(list);
+    return 0;
 }
 
-TEST(test_clear_destory)
+static int test_list_insert_at(void)
 {
-    LinkedList* llist = SetTestingList(10);
-    LinkedList_clear_destory(llist);
-    return NULL;
+    c_lib_list *list = c_lib_list_create();
+    int a = 1, b = 2, c = 3, d = 4;
+
+    c_lib_list_push(list, &a);
+    c_lib_list_push(list, &c);
+    c_lib_list_push(list, &d);
+
+    c_lib_list_push_at(list, &b, 1);
+
+    TEST_ASSERT_EQ(*(int *)c_lib_list_get(list, 0), 1, "Index 0 wrong");
+    TEST_ASSERT_EQ(*(int *)c_lib_list_get(list, 1), 2, "Index 1 wrong");
+    TEST_ASSERT_EQ(*(int *)c_lib_list_get(list, 2), 3, "Index 2 wrong");
+    TEST_ASSERT_EQ(*(int *)c_lib_list_get(list, 3), 4, "Index 3 wrong");
+
+    c_lib_list_destroy(list);
+    return 0;
 }
 
-TEST(test_push_pop)
+static int int_ptr_cmp(const void *a, const void *b)
 {
-    LinkedList_push(list, test1);
-    unit_assert(LinkedList_first(list)->value == test1, "Wrong first value");
-
-    LinkedList_push(list, test2);
-    unit_assert(LinkedList_count(list) == 2, "Wrong on count");
-
-    LinkedList_push(list, test3);
-    unit_assert(LinkedList_last(list)->value == test3, "Wrong last value");
-
-    char* val = LinkedList_pop(list);
-    unit_assert(val == test3, "Wrong on pop");
-
-    val = LinkedList_pop(list);
-    unit_assert(val == test2, "Wrong on pop");
-
-    val = LinkedList_pop(list);
-    unit_assert(val == test1, "Wrong on pop");
-    unit_assert(LinkedList_count(list) == 0, "Wrong on count");
-
-    return NULL;
+    if (a < b) return -1;
+    if (a > b) return 1;
+    return 0;
 }
 
-TEST(test_shift)
+static int test_list_remove_node(void)
 {
-    LinkedList_addFirst(list, test1);
-    unit_assert(LinkedList_first(list)->value == test1, "Wrong on addFirst");
+    c_lib_list *list = c_lib_list_create();
+    int vals[3] = {1, 2, 3};
 
-    LinkedList_addFirst(list, test2);
-    unit_assert(LinkedList_first(list)->value == test2, "Wrong on addFirst");
+    c_lib_list_push(list, &vals[0]);
+    c_lib_list_push(list, &vals[1]);
+    c_lib_list_push(list, &vals[2]);
 
-    LinkedList_addFirst(list, test3);
-    unit_assert(LinkedList_first(list)->value == test3, "Wrong on addFirst");
+    c_lib_list_node *node = c_lib_list_find(list, &vals[1], int_ptr_cmp);
+    TEST_ASSERT_NOT_NULL(node, "Find should work");
 
-    char* val = LinkedList_shift(list);
-    unit_assert(val == test3, "Wrong on addFirst");
+    c_lib_list_remove_node(list, node);
+    TEST_ASSERT_EQ(c_lib_list_count(list), (size_t)2, "Count should be 2");
 
-    val = LinkedList_shift(list);
-    unit_assert(val == test2, "Wrong on shift");
-
-    val = LinkedList_shift(list);
-    unit_assert(val == test1, "Wrong on shift");
-
-    return NULL;
+    c_lib_list_destroy(list);
+    return 0;
 }
 
-TEST(test_index)
+static int test_list_reverse(void)
 {
-    LinkedList* llist = SetTestingList(10);
-    int num = 3;
+    c_lib_list *list = c_lib_list_create();
+    int vals[5] = {1, 2, 3, 4, 5};
 
-    LinkedList_addWithIndex(llist, 3, (&num));
+    for (int i = 0; i < 5; i++)
+        c_lib_list_push(list, &vals[i]);
 
-    int* curr_ptr = LinkedList_remove_index(llist, 3);
-    unit_assert(*(curr_ptr) == 3, "Wrong on index");
+    c_lib_list_reverse(list);
 
-    LinkedList_clear_destory(llist);
-    return NULL;
-}
-
-TEST(test_add_all)
-{
-    LinkedList* list1 = SetTestingList(20);
-    LinkedList* list2 = SetTestingList(30);
-
-    int* val = LinkedList_get(list1, 3);
-    unit_assert(*val == 3, "Wrong on push into list1");
-
-    val = LinkedList_get(list2, 2);
-    unit_assert(*val == 2, "Wrong on push into list2");
-
-    LinkedList_addALLWithIndex(list1, 3, list2);
-
-    val = LinkedList_remove_index(list1, 4);
-    unit_assert(*(val) == 0, "Wrong on addALLWithIndex");
-    free(val);
-
-    LinkedList_clear_destory(list1);
-    free(list2);
-    list2 = NULL;
-
-    return NULL;
-}
-
-static int int_comparator(const void* a, const void* b)
-{
-
-    if (*(int*)a == *(int*)b)
-        return 0;
-    else if (*(int*)a < * (int*)b)
-        return -1;
-    return 1;
-}
-
-TEST(test_merge_sort)
-{
-    /* int array[] = { 0, 2, 4, 6, 3, 1, 5, 7, 10, 11, 8, 9, 12, 15, 14, 13 }; */
-    int array[] = { 0, 2, 4, 6, 3, 1, 5, 7 };
-    int list_len = sizeof(array) / sizeof(array[0]);
-    LinkedList* list = New_LinkedList();
-
-    for (int i = 0; i < list_len; ++i)
-    {
-        LinkedList_push(list, &array[i]);
+    for (int i = 0; i < 5; i++) {
+        int *v = c_lib_list_get(list, (size_t)i);
+        TEST_ASSERT_EQ(*v, vals[4 - i], "Reversed order wrong");
     }
 
-    list = LinkedList_merge_sort(list, int_comparator);
-
-    int i = 0;
-    for (ListNode* curr = list->head; curr != NULL; curr = curr->next)
-    {
-        unit_assert(*(int*)curr->value == i, "Linkedlist mergesort test failed");
-        ++i;
-    }
-    printf("\n");
-
-    LinkedList_destory(list);
-    return NULL;
+    c_lib_list_destroy(list);
+    return 0;
 }
 
-TEST(all_tests)
+static int test_list_clone(void)
 {
-    unit_suite_start();
-    unit_run_test(test_create);
-    unit_run_test(test_push_pop);
-    unit_run_test(test_shift);
-    unit_run_test(test_index);
-    unit_run_test(test_clear_destory);
-    unit_run_test(test_add_all);
-    unit_run_test(test_merge_sort);
-    unit_run_test(test_destory);
+    c_lib_list *list = c_lib_list_create();
+    int vals[3] = {1, 2, 3};
 
-    return NULL;
+    for (int i = 0; i < 3; i++)
+        c_lib_list_push(list, &vals[i]);
+
+    c_lib_list *clone = c_lib_list_clone(list);
+    TEST_ASSERT_NOT_NULL(clone, "Clone failed");
+    TEST_ASSERT_EQ(c_lib_list_count(clone), c_lib_list_count(list), "Clone count mismatch");
+
+    for (size_t i = 0; i < c_lib_list_count(list); i++) {
+        int *v1 = c_lib_list_get(list, i);
+        int *v2 = c_lib_list_get(clone, i);
+        TEST_ASSERT_EQ(*v1, *v2, "Clone values mismatch");
+    }
+
+    c_lib_list_destroy(list);
+    c_lib_list_destroy(clone);
+    return 0;
 }
 
-RUN_TESTS(all_tests);
+static int test_list_clear(void)
+{
+    c_lib_list *list = c_lib_list_create();
+    c_lib_list_push(list, test_malloc(100));
+    c_lib_list_push(list, test_malloc(100));
+    c_lib_list_push(list, test_malloc(100));
+
+    c_lib_list_clear_with(list, free);
+    TEST_ASSERT_EQ(c_lib_list_count(list), (size_t)0, "Clear should set count to 0");
+    TEST_ASSERT(c_lib_list_is_empty(list), "List should be empty");
+
+    c_lib_list_push(list, test_malloc(100));
+    TEST_ASSERT_EQ(c_lib_list_count(list), (size_t)1, "Push after clear should work");
+
+    c_lib_list_destroy_with(list, free);
+    return 0;
+}
+
+static int test_list_null_handling(void)
+{
+    c_lib_list_destroy(NULL);
+    c_lib_list_clear(NULL);
+    c_lib_list_push(NULL, NULL);
+    c_lib_list_pop(NULL);
+    c_lib_list_count(NULL);
+    TEST_ASSERT(c_lib_list_is_empty(NULL), "NULL list should be empty");
+    TEST_ASSERT_NULL(c_lib_list_get(NULL, 0), "Get from NULL should return NULL");
+    TEST_ASSERT_NULL(c_lib_list_find(NULL, NULL, NULL), "Find in NULL should return NULL");
+    c_lib_list_reverse(NULL);
+    c_lib_list_merge(NULL, NULL);
+    return 0;
+}
+
+int main(void)
+{
+    TEST_SETUP_NAME("List Tests");
+
+    RUN_TEST(test_list_create_destroy);
+    RUN_TEST(test_list_push_pop);
+    RUN_TEST(test_list_push_front);
+    RUN_TEST(test_list_get);
+    RUN_TEST(test_list_insert_at);
+    RUN_TEST(test_list_remove_node);
+    RUN_TEST(test_list_reverse);
+    RUN_TEST(test_list_clone);
+    RUN_TEST(test_list_clear);
+    RUN_TEST(test_list_null_handling);
+
+    TEST_SUMMARY();
+}

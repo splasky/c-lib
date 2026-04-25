@@ -1,410 +1,342 @@
-#include "../include/list.h"
-#include "../include/dbg.h"
-#include <stdio.h>
+#include "list.h"
 #include <stdlib.h>
 #include <string.h>
 
-static inline bool LinkedList_is_Over_Bound(LinkedList* list, const int index);
-static inline ListNode* LinkedList_getNodeFromIndex(LinkedList* list, const int index);
-static inline int ListNode_item_exists(
-    ListNode* node, void* value, LinkedList_Comparator comparator);
+c_lib_static_assert(sizeof(c_lib_list_node) % sizeof(void *) == 0,
+                    "c_lib_list_node must be cache-aligned");
 
-static inline ListNode* LinkedList_getNodeFromIndex(LinkedList* list, const int index)
+c_lib_list *c_lib_list_create(void)
 {
-    if (LinkedList_is_Over_Bound(list, index))
-    {
-        goto error;
-    }
-
-    ListNode* curr;
-    int i = 0;
-    for (curr = list->head; curr != NULL; curr = curr->next)
-    {
-        if (i == index)
-            break;
-        ++i;
-    }
-
-    return curr;
-error:
-    return NULL;
-}
-
-static inline bool LinkedList_is_Over_Bound(LinkedList* list, const int index)
-{
-    if (index > LinkedList_count(list) || LinkedList_count(list) < 0)
-    {
-        log_err(
-            "Insert into linked list out of bound(linked list length:%d index : %d)\n ",
-            LinkedList_count(list), index);
-        return true;
-    }
-
-    return false;
-}
-
-static inline int ListNode_item_exists(
-    ListNode* node, void* value, LinkedList_Comparator comparator)
-{
-    if (node == NULL)
-    {
-        return 0;
-    }
-
-    if (comparator(value, node->value))
-    {
-        return 1;
-    }
-
-    return ListNode_item_exists(node->next, value, comparator);
-}
-
-LinkedList* New_LinkedList(void)
-{
-    LinkedList* list = calloc(1, sizeof(LinkedList));
-    check_mem(list);
+    c_lib_list *list = calloc(1, sizeof(*list));
     return list;
-error:
-    return NULL;
 }
 
-void LinkedList_destory(LinkedList* list)
+static c_lib_list_node *list_node_create(void *data)
 {
-    for (ListNode* curr = list->head; curr != NULL; curr = curr->next)
-    {
-        if (curr->prev)
-        {
-            free(curr->prev);
-            curr->prev = NULL;
-        }
-    }
-
-    if (LinkedList_last(list) != NULL)
-    {
-        free(LinkedList_last(list));
-        list->tail = NULL;
-    }
-
-    if (list)
-    {
-        free(list);
-        list = NULL;
-    }
+    c_lib_list_node *node = calloc(1, sizeof(*node));
+    if (C_LIB_UNLIKELY(node == NULL))
+        return NULL;
+    node->data = data;
+    return node;
 }
 
-void LinkedList_clear(LinkedList* list)
+void c_lib_list_destroy(c_lib_list *list)
 {
-    for (ListNode* curr = list->head; curr != NULL; curr = curr->next)
-    {
-        if (curr->value)
-        {
-            free(curr->value);
-            curr->value = NULL;
-        }
+    if (list == NULL)
+        return;
+    c_lib_list_clear(list);
+    free(list);
+}
+
+void c_lib_list_destroy_with(c_lib_list *list, c_lib_list_free_fn free_fn)
+{
+    if (list == NULL)
+        return;
+    c_lib_list_clear_with(list, free_fn);
+    free(list);
+}
+
+void c_lib_list_clear(c_lib_list *list)
+{
+    if (list == NULL)
+        return;
+
+    c_lib_list_node *curr = list->head;
+    while (curr != NULL) {
+        c_lib_list_node *next = curr->next;
+        free(curr);
+        curr = next;
     }
+
+    list->head = NULL;
+    list->tail = NULL;
+    list->count = 0;
 }
 
-void LinkedList_clear_destory(LinkedList* list)
+void c_lib_list_clear_with(c_lib_list *list, c_lib_list_free_fn free_fn)
 {
-    LinkedList_clear(list);
-    LinkedList_destory(list);
+    if (list == NULL)
+        return;
+
+    c_lib_list_node *curr = list->head;
+    while (curr != NULL) {
+        c_lib_list_node *next = curr->next;
+        if (free_fn != NULL && curr->data != NULL)
+            free_fn(curr->data);
+        free(curr);
+        curr = next;
+    }
+
+    list->head = NULL;
+    list->tail = NULL;
+    list->count = 0;
 }
 
-void LinkedList_push(LinkedList* list, void* value)
+void c_lib_list_push(c_lib_list *list, void *data)
 {
-    ListNode* node = calloc(1, sizeof(ListNode));
-    check_mem(node);
-    node->value = value;
+    if (C_LIB_UNLIKELY(list == NULL))
+        return;
 
-    if (LinkedList_last(list) == NULL)
-    {
+    c_lib_list_node *node = list_node_create(data);
+    if (C_LIB_UNLIKELY(node == NULL))
+        return;
+
+    if (list->tail == NULL) {
         list->head = node;
         list->tail = node;
-    }
-    else
-    {
+    } else {
         node->prev = list->tail;
         list->tail->next = node;
         list->tail = node;
     }
     list->count++;
-error:
-    return;
 }
 
-void* LinkedList_pop(LinkedList* list)
+void c_lib_list_push_front(c_lib_list *list, void *data)
 {
-    ListNode* last = LinkedList_last(list);
-    return (last != NULL) ? LinkedList_remove(list, last) : NULL;
-}
+    if (C_LIB_UNLIKELY(list == NULL))
+        return;
 
-void* LinkedList_shift(LinkedList* list)
-{
-    return (list->head != NULL) ? LinkedList_remove(list, list->head) : NULL;
-}
+    c_lib_list_node *node = list_node_create(data);
+    if (C_LIB_UNLIKELY(node == NULL))
+        return;
 
-void LinkedList_addFirst(LinkedList* list, void* value)
-{
-    ListNode* node = calloc(1, sizeof(ListNode));
-    check_mem(node);
-    node->value = value;
-
-    if (LinkedList_first(list) == NULL)
-    {
+    if (list->head == NULL) {
         list->head = node;
         list->tail = node;
-    }
-    else
-    {
-        node->next = LinkedList_first(list);
-        LinkedList_first(list)->prev = node;
+    } else {
+        node->next = list->head;
+        list->head->prev = node;
         list->head = node;
     }
     list->count++;
-error:
-    return;
 }
 
-void* LinkedList_remove(LinkedList* list, ListNode* node)
+void c_lib_list_push_at(c_lib_list *list, void *data, c_lib_size_t index)
 {
-    void* result = NULL;
-    check(LinkedList_first(list) && LinkedList_last(list), "List is empty");
-    check(node, "Node can't be NULL");
+    if (C_LIB_UNLIKELY(list == NULL))
+        return;
 
-    if (LinkedList_first(list) == node && LinkedList_last(list) == node)
-    {
-        list->head = NULL;
-        list->tail = NULL;
-    }
-    else if (LinkedList_first(list) == node)
-    {
-        list->head = list->head->next;
-        check(list->head != NULL, "Invalid list, get a first that is a NULL");
-        list->head->prev = NULL;
-    }
-    else if (LinkedList_last(list) == node)
-    {
-        list->tail = list->tail->prev;
-        check(list->tail != NULL, "Invalid list, get a last that is a NULL");
-        list->tail->next = NULL;
-    }
-    else
-    {
-        node->next->prev = node->prev;
-        node->prev->next = node->next;
-    }
-
-    list->count--;
-    result = node->value;
-    free(node);
-    node = NULL;
-
-error:
-    return result;
-}
-
-void LinkedList_addWithIndex(LinkedList* list, const int index, void* value)
-{
-
-    ListNode* index_node = LinkedList_getNodeFromIndex(list, index);
-    check(index_node, "get node error");
-
-    if (LinkedList_first(list) == NULL)
-    {
-        LinkedList_push(list, value);
+    if (index >= list->count) {
+        c_lib_list_push(list, data);
         return;
     }
 
-    ListNode* node = calloc(1, sizeof(ListNode));
-    node->value = value;
+    if (index == 0) {
+        c_lib_list_push_front(list, data);
+        return;
+    }
 
-    node->prev = index_node->prev;
-    node->next = index_node;
-    index_node->prev->next = node;
-    index_node->prev = node;
+    c_lib_list_node *node = list_node_create(data);
+    if (C_LIB_UNLIKELY(node == NULL))
+        return;
 
+    c_lib_list_node *curr = list->head;
+    for (c_lib_size_t i = 0; i < index - 1; i++)
+        curr = curr->next;
+
+    node->next = curr->next;
+    node->prev = curr;
+    curr->next->prev = node;
+    curr->next = node;
     list->count++;
-error:
-    return;
 }
 
-void LinkedList_addALL(LinkedList* list, LinkedList* added)
+void *c_lib_list_pop(c_lib_list *list)
 {
-    LinkedList_addALLWithIndex(list, (LinkedList_count(list) - 1), added);
-}
-
-void LinkedList_addALLWithIndex(LinkedList* list, const int index, LinkedList* added)
-{
-    if (added->head == NULL)
-    {
-        goto error;
-    }
-
-    ListNode* index_node = LinkedList_getNodeFromIndex(list, index);
-    check(index_node, "Merge two linkedlist failed");
-
-    if (index_node->next == NULL)
-    {
-        index_node->next = added->head;
-        added->head->prev = index_node;
-    }
-    else if (LinkedList_count(list) > 0 && LinkedList_count(added) > 0)
-    {
-        index_node->next->prev = added->tail;
-        added->tail->next = index_node->next;
-        index_node->next = added->head;
-        added->head->prev = index_node;
-    }
-    else if (LinkedList_first(list) == NULL)
-    {
-        list->head = added->head;
-        list->tail = added->tail;
-    }
-
-    list->count += added->count;
-error:
-    return;
-}
-
-void* LinkedList_remove_index(LinkedList* list, const int index)
-{
-    ListNode* index_node = LinkedList_getNodeFromIndex(list, index);
-    check(index_node, "Remove from index failed");
-    return LinkedList_remove(list, index_node);
-error:
-    debug("list count:%d ,index:%d", LinkedList_count(list), index);
-    return NULL;
-}
-
-void* LinkedList_get(LinkedList* list, const int index)
-{
-    ListNode* node = LinkedList_getNodeFromIndex(list, index);
-    check(node, "can't get index in list");
-    return node->value;
-
-error:
-    return NULL;
-}
-
-int LinkedList_item_exists(
-    LinkedList* list, void* value, LinkedList_Comparator comparator)
-{
-    if (list == NULL || list->head == NULL)
-    {
-        return -1;
-    }
-
-    ListNode* curr = LinkedList_first(list);
-    return ListNode_item_exists(curr, value, comparator);
-}
-
-LinkedList* LinkedList_deep_copy(LinkedList* list)
-{
-    if (!list)
-    {
+    if (C_LIB_UNLIKELY(list == NULL || list->tail == NULL))
         return NULL;
-    }
-    LinkedList* new_list = New_LinkedList();
 
-    for (ListNode* curr = list->head; curr != NULL; curr = curr->next)
-    {
-        if (curr && curr->value)
-        {
-            void* value = calloc(1, sizeof(curr->value));
-            value = curr->value;
-            LinkedList_push(new_list, value);
-        }
+    c_lib_list_node *node = list->tail;
+    void *data = node->data;
+
+    if (node->prev != NULL) {
+        node->prev->next = NULL;
+        list->tail = node->prev;
+    } else {
+        list->head = NULL;
+        list->tail = NULL;
+    }
+
+    list->count--;
+    free(node);
+    return data;
+}
+
+void *c_lib_list_pop_front(c_lib_list *list)
+{
+    if (C_LIB_UNLIKELY(list == NULL || list->head == NULL))
+        return NULL;
+
+    c_lib_list_node *node = list->head;
+    void *data = node->data;
+
+    if (node->next != NULL) {
+        node->next->prev = NULL;
+        list->head = node->next;
+    } else {
+        list->head = NULL;
+        list->tail = NULL;
+    }
+
+    list->count--;
+    free(node);
+    return data;
+}
+
+void *c_lib_list_pop_at(c_lib_list *list, c_lib_size_t index)
+{
+    if (C_LIB_UNLIKELY(list == NULL || index >= list->count))
+        return NULL;
+
+    c_lib_list_node *node = list->head;
+    for (c_lib_size_t i = 0; i < index; i++)
+        node = node->next;
+
+    void *data = node->data;
+
+    if (node->prev != NULL)
+        node->prev->next = node->next;
+    else
+        list->head = node->next;
+
+    if (node->next != NULL)
+        node->next->prev = node->prev;
+    else
+        list->tail = node->prev;
+
+    list->count--;
+    free(node);
+    return data;
+}
+
+void *c_lib_list_get(const c_lib_list *list, c_lib_size_t index)
+{
+    if (C_LIB_UNLIKELY(list == NULL || index >= list->count))
+        return NULL;
+
+    c_lib_list_node *node = list->head;
+    for (c_lib_size_t i = 0; i < index; i++)
+        node = node->next;
+
+    return node->data;
+}
+
+c_lib_list_node *c_lib_list_find(const c_lib_list *list, const void *data, c_lib_list_cmp cmp)
+{
+    if (C_LIB_UNLIKELY(list == NULL || cmp == NULL))
+        return NULL;
+
+    c_lib_list_node *node = list->head;
+    while (node != NULL) {
+        if (cmp(node->data, data) == 0)
+            return node;
+        node = node->next;
+    }
+    return NULL;
+}
+
+void c_lib_list_remove_node(c_lib_list *list, c_lib_list_node *node)
+{
+    if (C_LIB_UNLIKELY(list == NULL || node == NULL))
+        return;
+
+    if (node->prev != NULL)
+        node->prev->next = node->next;
+    else
+        list->head = node->next;
+
+    if (node->next != NULL)
+        node->next->prev = node->prev;
+    else
+        list->tail = node->prev;
+
+    list->count--;
+    free(node);
+}
+
+bool c_lib_list_remove_data(c_lib_list *list, const void *data, c_lib_list_cmp cmp)
+{
+    if (C_LIB_UNLIKELY(list == NULL || cmp == NULL))
+        return false;
+
+    c_lib_list_node *node = c_lib_list_find(list, data, cmp);
+    if (node == NULL)
+        return false;
+
+    c_lib_list_remove_node(list, node);
+    return true;
+}
+
+c_lib_size_t c_lib_list_count(const c_lib_list *list)
+{
+    return list != NULL ? list->count : 0;
+}
+
+bool c_lib_list_is_empty(const c_lib_list *list)
+{
+    return list == NULL || list->count == 0;
+}
+
+void c_lib_list_reverse(c_lib_list *list)
+{
+    if (C_LIB_UNLIKELY(list == NULL || list->count <= 1))
+        return;
+
+    c_lib_list_node *curr = list->head;
+    c_lib_list_node *tmp = NULL;
+
+    list->tail = list->head;
+
+    while (curr != NULL) {
+        tmp = curr->prev;
+        curr->prev = curr->next;
+        curr->next = tmp;
+        curr = curr->prev;
+    }
+
+    if (tmp != NULL)
+        list->head = tmp->prev;
+}
+
+c_lib_list *c_lib_list_clone(const c_lib_list *list)
+{
+    if (C_LIB_UNLIKELY(list == NULL))
+        return NULL;
+
+    c_lib_list *new_list = c_lib_list_create();
+    if (C_LIB_UNLIKELY(new_list == NULL))
+        return NULL;
+
+    c_lib_list_node *node = list->head;
+    while (node != NULL) {
+        c_lib_list_push(new_list, node->data);
+        node = node->next;
     }
 
     return new_list;
 }
 
-void* LinkedList_find_value(LinkedList* list, void* key, LinkedList_Comparator comparator)
+void c_lib_list_merge(c_lib_list *dst, c_lib_list *src)
 {
-    check(list, "List is NULL.");
-    check(key, "Key is NULL.");
+    if (C_LIB_UNLIKELY(dst == NULL || src == NULL))
+        return;
 
-    ListNode* node = LinkedList_find_node(list, key, comparator);
-    if (node)
-    {
-        return node->value;
+    if (src->count == 0)
+        return;
+
+    if (dst->tail != NULL) {
+        dst->tail->next = src->head;
+        src->head->prev = dst->tail;
+        dst->tail = src->tail;
+    } else {
+        dst->head = src->head;
+        dst->tail = src->tail;
     }
 
-error:
-    log_info("Key not found.");
-    return NULL;
-}
+    dst->count += src->count;
 
-ListNode* LinkedList_find_node(
-    LinkedList* list, void* toFind, LinkedList_Comparator comparator)
-{
-    check(list, "List is NULL.");
-    check(toFind, "Key is NULL.");
-
-    ListNode* curr = list->head;
-    while (curr != NULL)
-    {
-        if (comparator(curr->value, toFind) == 0)
-        {
-            return curr;
-        }
-        curr = curr->next;
-    }
-
-error:
-    return NULL;
-}
-
-void LinkedList_remove_data(
-    LinkedList* list, void* data, LinkedList_Comparator comparator)
-{
-    ListNode* node = LinkedList_find_node(list, data, comparator);
-    if (node)
-    {
-        LinkedList_remove(list, node);
-    }
-}
-
-void* LinkedList_Iterate(LinkedList_Iterator* iterator)
-{
-    check(iterator, "Iterator is NULL.");
-    void* data = NULL;
-
-    if (iterator->position && iterator->list->count != 0)
-    {
-        data = iterator->position->value;
-        iterator->position = iterator->position->next;
-        iterator->index++;
-    }
-
-    return data;
-error:
-    return NULL;
-}
-
-void LinkedList_InitializeIterator(LinkedList_Iterator* iterator, LinkedList* list)
-{
-    check(iterator != NULL, "Iterator is NULL");
-    check(list != NULL, "LinkedList is NULL");
-
-    iterator->index = 0;
-    iterator->list = list;
-    iterator->position = list->head;
-    return;
-
-error:
-    log_err("InitializeIterator failed");
-}
-
-void LinkedList_ResetIterator(LinkedList_Iterator* iterator)
-{
-    check(iterator != NULL, "Iterator is NULL");
-    check(iterator->list != NULL, "List is NULL");
-
-    iterator->index = 0;
-    iterator->position = iterator->list->head;
-    return;
-
-error:
-    log_err("Reset iterator failed");
+    src->head = NULL;
+    src->tail = NULL;
+    src->count = 0;
 }
