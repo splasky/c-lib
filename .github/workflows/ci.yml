@@ -7,18 +7,26 @@ on:
     branches: [master, dev]
 
 jobs:
-  test:
-    name: Test + valgrind (${{ matrix.cpu }})
+  # ---------------------------------------------------------------------------
+  # x86_64 host build & test matrix.
+  # Each cell builds the library (both static + shared) and runs the full
+  # 26-test suite under valgrind. BUILD_TYPE is matrixed so we exercise both
+  # the size-optimized release flag set (-Os + LTO + gc-sections + strip) and
+  # the perf flag set (-O3 + LTO + -march/-mtune).
+  # ---------------------------------------------------------------------------
+  test-x86:
+    name: x86 ${{ matrix.cpu }} / ${{ matrix.build_type }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         cpu: [generic, zen2, zen3]
+        build_type: [release, fast]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install host toolchain
+      - name: Install host toolchain + valgrind
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc binutils make valgrind
@@ -26,13 +34,53 @@ jobs:
       - name: Toolchain version
         run: gcc --version | head -1
 
-      - name: Build static library
-        run: make CPU_TARGET=${{ matrix.cpu }} BUILD_TYPE=release clean static
+      - name: Build library (static + shared)
+        run: |
+          make CPU_TARGET=${{ matrix.cpu }} BUILD_TYPE=${{ matrix.build_type }} clean static
+          make CPU_TARGET=${{ matrix.cpu }} BUILD_TYPE=${{ matrix.build_type }} shared
 
-      - name: Run all tests under valgrind
+      - name: Report library size
+        run: make CPU_TARGET=${{ matrix.cpu }} BUILD_TYPE=${{ matrix.build_type }} size
+
+      - name: Run all 26 tests under valgrind (make test)
         run: make CPU_TARGET=${{ matrix.cpu }} test
 
-  test-arm:
+  # ---------------------------------------------------------------------------
+  # Coverage. Single x86 cell, runs every src/*.c through every tests/test_*.c
+  # with --coverage instrumentation, then uploads the HTML report as an
+  # artifact for browsing.
+  # ---------------------------------------------------------------------------
+  coverage:
+    name: Coverage report
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc binutils make valgrind gcovr
+
+      - name: Generate HTML coverage
+        run: make coverage_html
+
+      - name: Print summary table
+        run: make coverage
+
+      - name: Upload coverage HTML
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: coverage_html/
+
+  # ---------------------------------------------------------------------------
+  # ARM Cortex-M4 bare-metal build verification.
+  # Bare-metal builds are -ffreestanding -nostdlib (no libc, no syscalls), so
+  # they cannot host the test suite. We verify the emitted .o files instead:
+  # ELF Class/Machine/Type, float ABI, and Thumb ISA tag.
+  # ---------------------------------------------------------------------------
+  test-arm-baremetal:
     name: ARM bare-metal Cortex-M4 (${{ matrix.cpu }})
     runs-on: ubuntu-latest
     strategy:
@@ -45,7 +93,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install ARM toolchain
+      - name: Install ARM bare-metal toolchain
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make
@@ -66,11 +114,9 @@ jobs:
           done
           echo "All objects verified as ARM ELF"
 
-      - name: Verify float ABI matches CPU_TARGET
+      - name: Verify float ABI
         run: |
           set -e
-          # Each module's .o is read directly to confirm the actual emitted ABI,
-          # rather than recompiling a synthetic file.
           for obj in build/${{ matrix.cpu }}/*.o; do
             case "${{ matrix.cpu }}" in
               arm32)
@@ -87,7 +133,7 @@ jobs:
           done
           echo "Float ABI verified for ${{ matrix.cpu }}"
 
-      - name: Verify -mthumb (instruction set)
+      - name: Verify Thumb ISA
         run: |
           set -e
           for obj in build/${{ matrix.cpu }}/*.o; do
@@ -95,7 +141,7 @@ jobs:
           done
           echo "Thumb ISA verified"
 
-      - name: Verify static archive opens with arm-none-eabi-ar
+      - name: Verify archive opens with arm-none-eabi-ar / -size
         run: |
           set -e
           ar=build/${{ matrix.cpu }}/libc_lib-${{ matrix.cpu }}-release.a
@@ -103,10 +149,97 @@ jobs:
           arm-none-eabi-size "$ar" | head -10
           ls -la "$ar"
 
+  # ---------------------------------------------------------------------------
+  # ARM Linux cross-compile + qemu-user execution.
+  # This is where `make test` actually RUNS on ARM (Cortex-M4 bare-metal can't
+  # link against libc). qemu-user-static + binfmt_misc make ARM ELF binaries
+  # transparently invokable on the x86_64 runner.
+  #
+  # NOTE on valgrind: real valgrind can't instrument cross-architecture
+  # binaries (it needs to run on the same arch as the guest). Under qemu-user
+  # it would only see the qemu translator's heap, not the guest's, so we
+  # skip it via VALGRIND= and rely on the x86 matrix above for leak checking.
+  # The same memory bugs would surface on either arch since the C code is
+  # identical.
+  # ---------------------------------------------------------------------------
+  test-arm-linux:
+    name: ARM Linux test (${{ matrix.cpu }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # arm32-linux    = ARMv5+ soft-float ABI    (gnueabi)
+        # arm32-linux-hf = ARMv7-A hard-float ABI   (gnueabihf)
+        cpu: [arm32-linux, arm32-linux-hf]
+        include:
+          - cpu: arm32-linux
+            triplet: arm-linux-gnueabi
+            packages: gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi libc6-dev-armel-cross
+          - cpu: arm32-linux-hf
+            triplet: arm-linux-gnueabihf
+            packages: gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf libc6-dev-armhf-cross
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ARM Linux toolchain + qemu-user-static
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make qemu-user-static binfmt-support \
+            ${{ matrix.packages }}
+
+      - name: Toolchain version
+        run: ${{ matrix.triplet }}-gcc --version | head -1
+
+      - name: Verify binfmt registration for ARM
+        run: |
+          ls /proc/sys/fs/binfmt_misc/ | grep -i arm || true
+          cat /proc/sys/fs/binfmt_misc/qemu-arm 2>/dev/null || \
+            cat /proc/sys/fs/binfmt_misc/qemu-arm-static 2>/dev/null || true
+
+      - name: Build static library (release)
+        run: make CPU_TARGET=${{ matrix.cpu }} BUILD_TYPE=release clean static
+
+      - name: "Verify output is ARM ELF"
+        run: |
+          set -e
+          for obj in build/${{ matrix.cpu }}/*.o; do
+            ${{ matrix.triplet }}-readelf -h "$obj" | grep -q "Machine:.*ARM"
+          done
+
+      - name: Verify float ABI on first .o
+        run: |
+          set -e
+          obj=build/${{ matrix.cpu }}/darray.o
+          case "${{ matrix.cpu }}" in
+            arm32-linux)
+              # gnueabi = soft-float ABI: no VFP register passing tag
+              ${{ matrix.triplet }}-readelf -A "$obj" \
+                | grep -q "Tag_ABI_VFP_args" && {
+                  echo "ERROR: gnueabi build has VFP-args tag"; exit 1;
+                } || true
+              ;;
+            arm32-linux-hf)
+              # gnueabihf = hard-float ABI: VFP register passing required
+              ${{ matrix.triplet }}-readelf -A "$obj" \
+                | grep -q "Tag_ABI_VFP_args: VFP registers"
+              ;;
+          esac
+          echo "Float ABI verified for ${{ matrix.cpu }}"
+
+      - name: Run all 26 tests via qemu-user (make test)
+        # VALGRIND= disables the leak-check pass: cross-arch valgrind can't
+        # instrument qemu-translated binaries. The x86 matrix covers leaks.
+        run: make CPU_TARGET=${{ matrix.cpu }} test VALGRIND=
+
+  # ---------------------------------------------------------------------------
+  # Release artifacts. Builds one tarball per CPU target, including bare-metal
+  # ARM (static-only). Triggered after every test job passes.
+  # ---------------------------------------------------------------------------
   build-release:
     name: Release artifact (${{ matrix.cpu }})
     runs-on: ubuntu-latest
-    needs: [test, test-arm]
+    needs: [test-x86, test-arm-baremetal, test-arm-linux]
     strategy:
       matrix:
         include:
@@ -121,25 +254,39 @@ jobs:
             toolchain: host
           - cpu: arm32
             shared: false
-            toolchain: arm
+            toolchain: arm-baremetal
           - cpu: arm32-hf
             shared: false
-            toolchain: arm
+            toolchain: arm-baremetal
+          - cpu: arm32-linux
+            shared: true
+            toolchain: arm-linux-soft
+          - cpu: arm32-linux-hf
+            shared: true
+            toolchain: arm-linux-hf
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install host toolchain
-        if: matrix.toolchain == 'host'
+      - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc binutils make
-
-      - name: Install ARM toolchain
-        if: matrix.toolchain == 'arm'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make
+          case "${{ matrix.toolchain }}" in
+            host)
+              sudo apt-get install -y gcc binutils make
+              ;;
+            arm-baremetal)
+              sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make
+              ;;
+            arm-linux-soft)
+              sudo apt-get install -y make gcc-arm-linux-gnueabi \
+                binutils-arm-linux-gnueabi libc6-dev-armel-cross
+              ;;
+            arm-linux-hf)
+              sudo apt-get install -y make gcc-arm-linux-gnueabihf \
+                binutils-arm-linux-gnueabihf libc6-dev-armhf-cross
+              ;;
+          esac
 
       - name: Build static (${{ matrix.cpu }})
         run: make CPU_TARGET=${{ matrix.cpu }} BUILD_TYPE=release clean static
@@ -147,10 +294,6 @@ jobs:
       - name: Build shared (${{ matrix.cpu }})
         if: matrix.shared
         run: make CPU_TARGET=${{ matrix.cpu }} BUILD_TYPE=release shared
-
-      - name: Report artifact size
-        if: matrix.shared
-        run: make CPU_TARGET=${{ matrix.cpu }} BUILD_TYPE=release size
 
       - name: Stage distribution layout
         run: |
@@ -200,9 +343,8 @@ jobs:
           set -e
           mkdir -p release
           for dir in artifacts/*/; do
-            cp "$dir"*.tar.gz release/
+            cp "$dir"*.tar.gz release/ 2>/dev/null || true
           done
-          tar -czf c_lib-all-platforms.tar.gz release/
           ls -la release/
 
       - name: Create GitHub Release

@@ -5,8 +5,14 @@ CPU_TARGET ?= generic
 PREFIX ?= /usr/local
 
 # CPU_TARGET selects the toolchain prefix and architecture flags.
-# arm32 / arm32-hf are bare-metal Cortex-M4 (no libc, no libm, no syscalls);
-# everything else uses the host gcc.
+#
+# Bare-metal Cortex-M4 (no libc, no libm, no syscalls -> no `make test`):
+#   arm32       Cortex-M4   soft-float
+#   arm32-hf    Cortex-M4F  hard-float (FPv4-SP)
+#
+# Hosted ARM Linux (full libc -> `make test` runs under qemu-user):
+#   arm32-linux     ARMv5+ via gnueabi  (soft-float ABI)
+#   arm32-linux-hf  ARMv7-A via gnueabihf (hard-float ABI, VFPv3)
 ifeq ($(CPU_TARGET),arm32)
     CROSS_COMPILE := arm-none-eabi-
     ARCH_CFLAGS := -mcpu=cortex-m4 -mthumb -mfloat-abi=soft \
@@ -17,6 +23,10 @@ else ifeq ($(CPU_TARGET),arm32-hf)
     ARCH_CFLAGS := -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard \
                    -ffreestanding -fno-builtin -fno-common
     BARE_METAL := 1
+else ifeq ($(CPU_TARGET),arm32-linux)
+    CROSS_COMPILE := arm-linux-gnueabi-
+else ifeq ($(CPU_TARGET),arm32-linux-hf)
+    CROSS_COMPILE := arm-linux-gnueabihf-
 endif
 
 # GNU Make predefines CC=cc and AR=ar, so a plain `?=` here would never let
