@@ -230,6 +230,13 @@ jobs:
       - name: Run all 26 tests via qemu-user (make test)
         # VALGRIND= disables the leak-check pass: cross-arch valgrind can't
         # instrument qemu-translated binaries. The x86 matrix covers leaks.
+        #
+        # QEMU_LD_PREFIX points qemu-user at the cross-sysroot so it can resolve
+        # the ARM dynamic linker (PT_INTERP = /lib/ld-linux.so.3 on gnueabi,
+        # /lib/ld-linux-armhf.so.3 on gnueabihf). The libc6-dev-*-cross packages
+        # install those under /usr/${triplet}/lib/.
+        env:
+          QEMU_LD_PREFIX: /usr/${{ matrix.triplet }}
         run: make CPU_TARGET=${{ matrix.cpu }} test VALGRIND=
 
   # ---------------------------------------------------------------------------
