@@ -1,20 +1,40 @@
 # c-lib - CPU-optimized Makefile
 
-CC ?= gcc
-# gcc-ar / gcc-ranlib understand LTO bytecode (.gnu.lto_*) sections in object
-# files. Plain `ar` silently drops them, breaking LTO for static-archive
-# consumers. Both wrappers fall through to plain ar/ranlib for non-LTO objects.
-AR ?= gcc-ar
-RANLIB ?= gcc-ranlib
-STRIP ?= strip
-OBJCOPY ?= objcopy
-SIZE ?= size
-RM ?= rm
-MKDIR ?= mkdir -p
-
 VERSION := 3.0.0
 CPU_TARGET ?= generic
 PREFIX ?= /usr/local
+
+# CPU_TARGET selects the toolchain prefix and architecture flags.
+# arm32 / arm32-hf are bare-metal Cortex-M4 (no libc, no libm, no syscalls);
+# everything else uses the host gcc.
+ifeq ($(CPU_TARGET),arm32)
+    CROSS_COMPILE := arm-none-eabi-
+    ARCH_CFLAGS := -mcpu=cortex-m4 -mthumb -mfloat-abi=soft \
+                   -ffreestanding -fno-builtin -fno-common
+    BARE_METAL := 1
+else ifeq ($(CPU_TARGET),arm32-hf)
+    CROSS_COMPILE := arm-none-eabi-
+    ARCH_CFLAGS := -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard \
+                   -ffreestanding -fno-builtin -fno-common
+    BARE_METAL := 1
+endif
+
+# GNU Make predefines CC=cc and AR=ar, so a plain `?=` here would never let
+# us swap in a cross-compiler. Treat make's built-in defaults as "unset".
+# gcc-ar / gcc-ranlib understand LTO bytecode (.gnu.lto_*) sections in object
+# files; plain `ar` silently drops them and breaks LTO for archive consumers.
+ifeq ($(origin CC),default)
+    CC := $(CROSS_COMPILE)gcc
+endif
+ifeq ($(origin AR),default)
+    AR := $(CROSS_COMPILE)gcc-ar
+endif
+RANLIB ?= $(CROSS_COMPILE)gcc-ranlib
+STRIP ?= $(CROSS_COMPILE)strip
+OBJCOPY ?= $(CROSS_COMPILE)objcopy
+SIZE ?= $(CROSS_COMPILE)size
+RM ?= rm
+MKDIR ?= mkdir -p
 
 SRC_DIR := src
 INC_DIR := include
@@ -128,6 +148,13 @@ else
     TARGET = c_lib-$(CPU_TARGET)-release
 endif
 
+# Bare-metal targets: append CPU/FPU flags, drop libc-dependent flags.
+ifdef BARE_METAL
+    CFLAGS += $(ARCH_CFLAGS)
+    # No libm, no dynamic loader, no PLT, no eager binding -- bare-metal links
+    # are user-supplied with their own linker script.
+    LDFLAGS = -nostdlib
+endif
 
 # Coverage
 ifeq ($(COVERAGE),1)
@@ -173,14 +200,23 @@ endif
 	@cd $(BUILD_DIR) && ln -sf $(notdir $(SHARED_LIB)) $(SHARED_SONAME) \
 		&& ln -sf $(SHARED_SONAME) $(notdir $(SHARED_LINK))
 
-.PHONY: all help test coverage coverage_html clean info install uninstall static shared size
+.PHONY: all help test coverage coverage_html clean info install uninstall static shared _shared_real size
 
 all: info $(STATIC_LIB)
 
 static: info $(STATIC_LIB)
 	@echo "  Static : $(STATIC_LIB) ($$(stat -c%s $(STATIC_LIB)) bytes)"
 
-shared: info $(SHARED_LIB)
+shared:
+ifdef BARE_METAL
+	@echo "ERROR: 'shared' is not supported for bare-metal CPU_TARGET=$(CPU_TARGET)." >&2
+	@echo "       Bare-metal builds have no dynamic loader; use 'static' instead." >&2
+	@exit 1
+else
+	@$(MAKE) --no-print-directory _shared_real
+endif
+
+_shared_real: info $(SHARED_LIB)
 	@echo "  Shared : $(SHARED_LIB) ($$(stat -c%s $(SHARED_LIB)) bytes)"
 	@echo "  SONAME : $(SHARED_SONAME)"
 	@echo "  Link   : $(SHARED_LINK)"

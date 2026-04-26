@@ -8,45 +8,41 @@ on:
 
 jobs:
   test:
-    name: Test and Memory Check (${{ matrix.cpu }})
+    name: Test + valgrind (${{ matrix.cpu }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         cpu: [generic, zen2, zen3]
-        gcc_version: ['15']
-
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install host toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y valgrind gcc make
+          sudo apt-get install -y gcc binutils make valgrind
 
-      - name: Set up GCC ${{ matrix.gcc_version }}
-        run: |
-          gcc --version
+      - name: Toolchain version
+        run: gcc --version | head -1
 
-      - name: Build library (${{ matrix.cpu }})
-        run: |
-          make CPU_TARGET=${{ matrix.cpu }} clean all
+      - name: Build static library
+        run: make CPU_TARGET=${{ matrix.cpu }} BUILD_TYPE=release clean static
 
-      - name: Run tests with valgrind (make test)
-        run: |
-          make CPU_TARGET=${{ matrix.cpu }} test
+      - name: Run all tests under valgrind
+        run: make CPU_TARGET=${{ matrix.cpu }} test
 
   test-arm:
-    name: Build ARM bare-metal (${{ matrix.cpu }})
+    name: ARM bare-metal Cortex-M4 (${{ matrix.cpu }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
+        # arm32    = Cortex-M4 soft-float
+        # arm32-hf = Cortex-M4F hard-float (FPv4-SP)
         cpu: [arm32, arm32-hf]
-
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install ARM toolchain
@@ -54,103 +50,141 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make
 
-      - name: Verify toolchain
-        run: |
-          arm-none-eabi-gcc --version
+      - name: Toolchain version
+        run: arm-none-eabi-gcc --version | head -1
 
-      - name: Build library (${{ matrix.cpu }})
-        run: |
-          make CPU_TARGET=${{ matrix.cpu }} clean all
+      - name: Build static library (release)
+        run: make CPU_TARGET=${{ matrix.cpu }} BUILD_TYPE=release clean static
 
-      - name: Verify ARM ELF output
+      - name: "Verify output is ARM ELF (Machine: ARM)"
         run: |
           set -e
           for obj in build/${{ matrix.cpu }}/*.o; do
             echo "=== $obj ==="
-            arm-none-eabi-readelf -h "$obj" | grep -E "Class|Machine"
+            arm-none-eabi-readelf -h "$obj" | grep -E "Class|Machine|Type"
             arm-none-eabi-readelf -h "$obj" | grep -q "Machine:.*ARM"
           done
           echo "All objects verified as ARM ELF"
 
-      - name: Check float ABI
+      - name: Verify float ABI matches CPU_TARGET
         run: |
-          # Compile a synthetic float op to confirm -mfloat-abi took effect
-          echo 'float f(float a, float b) { return a + b; }' > /tmp/fp.c
-          case "${{ matrix.cpu }}" in
-            arm32)
-              arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -mfloat-abi=soft \
-                -c /tmp/fp.c -o /tmp/fp.o
-              if arm-none-eabi-readelf -A /tmp/fp.o | grep -q "Tag_FP_arch"; then
-                echo "ERROR: soft-float build has Tag_FP_arch"; exit 1
-              fi
-              ;;
-            arm32-hf)
-              arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb \
-                -mfpu=fpv4-sp-d16 -mfloat-abi=hard \
-                -c /tmp/fp.c -o /tmp/fp.o
-              arm-none-eabi-readelf -A /tmp/fp.o | grep -q "Tag_FP_arch: VFPv4-D16"
-              arm-none-eabi-readelf -A /tmp/fp.o | grep -q "Tag_ABI_VFP_args: VFP registers"
-              ;;
-          esac
+          set -e
+          # Each module's .o is read directly to confirm the actual emitted ABI,
+          # rather than recompiling a synthetic file.
+          for obj in build/${{ matrix.cpu }}/*.o; do
+            case "${{ matrix.cpu }}" in
+              arm32)
+                if arm-none-eabi-readelf -A "$obj" | grep -q "Tag_FP_arch"; then
+                  echo "ERROR: $obj has Tag_FP_arch but CPU_TARGET=arm32 is soft-float"
+                  exit 1
+                fi
+                ;;
+              arm32-hf)
+                arm-none-eabi-readelf -A "$obj" | grep -q "Tag_FP_arch: VFPv4-D16"
+                arm-none-eabi-readelf -A "$obj" | grep -q "Tag_ABI_VFP_args: VFP registers"
+                ;;
+            esac
+          done
           echo "Float ABI verified for ${{ matrix.cpu }}"
 
+      - name: Verify -mthumb (instruction set)
+        run: |
+          set -e
+          for obj in build/${{ matrix.cpu }}/*.o; do
+            arm-none-eabi-readelf -A "$obj" | grep -q "Tag_THUMB_ISA_use"
+          done
+          echo "Thumb ISA verified"
+
+      - name: Verify static archive opens with arm-none-eabi-ar
+        run: |
+          set -e
+          ar=build/${{ matrix.cpu }}/libc_lib-${{ matrix.cpu }}-release.a
+          arm-none-eabi-ar t "$ar"
+          arm-none-eabi-size "$ar" | head -10
+          ls -la "$ar"
+
   build-release:
-    name: Build Release Library
+    name: Release artifact (${{ matrix.cpu }})
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, test-arm]
     strategy:
       matrix:
-        cpu: [generic, zen2, zen3]
-
+        include:
+          - cpu: generic
+            shared: true
+            toolchain: host
+          - cpu: zen2
+            shared: true
+            toolchain: host
+          - cpu: zen3
+            shared: true
+            toolchain: host
+          - cpu: arm32
+            shared: false
+            toolchain: arm
+          - cpu: arm32-hf
+            shared: false
+            toolchain: arm
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install host toolchain
+        if: matrix.toolchain == 'host'
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc binutils make
 
-      - name: Build release static + shared (${{ matrix.cpu }})
+      - name: Install ARM toolchain
+        if: matrix.toolchain == 'arm'
         run: |
-          make CPU_TARGET=${{ matrix.cpu }} BUILD_TYPE=release clean static
-          make CPU_TARGET=${{ matrix.cpu }} BUILD_TYPE=release shared
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make
+
+      - name: Build static (${{ matrix.cpu }})
+        run: make CPU_TARGET=${{ matrix.cpu }} BUILD_TYPE=release clean static
+
+      - name: Build shared (${{ matrix.cpu }})
+        if: matrix.shared
+        run: make CPU_TARGET=${{ matrix.cpu }} BUILD_TYPE=release shared
 
       - name: Report artifact size
-        run: |
-          make CPU_TARGET=${{ matrix.cpu }} BUILD_TYPE=release size
+        if: matrix.shared
+        run: make CPU_TARGET=${{ matrix.cpu }} BUILD_TYPE=release size
 
       - name: Stage distribution layout
         run: |
+          set -e
           stage=artifacts/${{ matrix.cpu }}
           mkdir -p $stage/lib $stage/include
           cp build/${{ matrix.cpu }}/libc_lib-${{ matrix.cpu }}-release.a $stage/lib/
-          cp -P build/${{ matrix.cpu }}/libc_lib-${{ matrix.cpu }}-release.so* $stage/lib/
+          if [ "${{ matrix.shared }}" = "true" ]; then
+            cp -P build/${{ matrix.cpu }}/libc_lib-${{ matrix.cpu }}-release.so* $stage/lib/
+          fi
           cp include/base.h include/darray.h include/hashmap.h include/list.h \
              include/rbtree.h include/types.h $stage/include/
 
       - name: Create distribution archive
         run: |
           cd artifacts/${{ matrix.cpu }}
-          tar -czf ../../c_lib-${{ matrix.cpu }}-linux.tar.gz .
+          tar -czf ../../c_lib-${{ matrix.cpu }}.tar.gz .
           cd ../..
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: c_lib-${{ matrix.cpu }}-linux
-          path: c_lib-${{ matrix.cpu }}-linux.tar.gz
+          name: c_lib-${{ matrix.cpu }}
+          path: c_lib-${{ matrix.cpu }}.tar.gz
 
   release:
-    name: Create Release
+    name: GitHub Release
     runs-on: ubuntu-latest
     needs: build-release
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/master'
     permissions:
       contents: write
-
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Download all artifacts
@@ -158,15 +192,14 @@ jobs:
         with:
           path: artifacts
 
-      - name: Display structure
-        run: |
-          ls -la artifacts/
+      - name: Show artifact tree
+        run: ls -la artifacts/
 
-      - name: Create release archive
+      - name: Stage release tarballs
         run: |
+          set -e
           mkdir -p release
           for dir in artifacts/*/; do
-            cpu=$(basename "$dir")
             cp "$dir"*.tar.gz release/
           done
           tar -czf c_lib-all-platforms.tar.gz release/
@@ -174,7 +207,7 @@ jobs:
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push'
         with:
           files: release/*.tar.gz
           draft: false
