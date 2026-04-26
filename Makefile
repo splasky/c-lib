@@ -72,9 +72,6 @@ ifeq ($(CPU_TARGET),zen2)
 else ifeq ($(CPU_TARGET),zen3)
     MARCH ?= znver3
     MTUNE ?= znver3
-else ifeq ($(CPU_TARGET),native)
-    MARCH ?= native
-    MTUNE ?= native
 else
     MARCH ?= x86-64-v2
     MTUNE ?= generic
@@ -351,7 +348,7 @@ help:
 	@echo "  coverage, coverage_html"
 	@echo "  install, uninstall"
 	@echo ""
-	@echo "  CPU_TARGET=zen3|zen2|generic|native"
+	@echo "  CPU_TARGET=zen3|zen2|generic"
 	@echo "  BUILD_TYPE=debug|release|fast"
 	@echo "    debug   = -O0 -g + ASAN/UBSAN"
 	@echo "    release = -Os + LTO + gc-sections + strip   (smallest binary)"
