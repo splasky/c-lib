@@ -30,10 +30,68 @@ TEST_SOURCES := $(addprefix $(TEST_DIR)/,$(addsuffix .c,$(MODULES:%=test_%)))
 
 # Build type
 BUILD_TYPE ?= release
+
+# CPU_TARGET -> -march / -mtune mapping. Used by BUILD_TYPE=fast.
+# -march sets the ISA baseline (allows e.g. SSE4 / AVX2 instructions).
+# -mtune steers scheduling. Some -march values (like "x86-64-v2") aren't
+# valid -mtune values, so the two are kept independent.
+# Override with MARCH=... / MTUNE=... if you need something exotic.
+ifeq ($(CPU_TARGET),zen2)
+    MARCH ?= znver2
+    MTUNE ?= znver2
+else ifeq ($(CPU_TARGET),zen3)
+    MARCH ?= znver3
+    MTUNE ?= znver3
+else ifeq ($(CPU_TARGET),native)
+    MARCH ?= native
+    MTUNE ?= native
+else
+    MARCH ?= x86-64-v2
+    MTUNE ?= generic
+endif
+
 ifeq ($(BUILD_TYPE),debug)
     CFLAGS = -O0 -g -std=gnu2x -Wall -Wextra -Werror -fsanitize=address -fsanitize=undefined
     LDFLAGS = -lm -fsanitize=address -fsanitize=undefined
     TARGET = c_lib-$(CPU_TARGET)-debug
+else ifeq ($(BUILD_TYPE),fast)
+    # Maximum-performance build. Trades binary size and IEEE-754 strictness
+    # for raw throughput.
+    #
+    # Compile-time:
+    #   -O3                              full optimizer pipeline
+    #   -march=$(MARCH) -mtune=$(MARCH)  emit and tune for the target uarch
+    #   -funroll-loops                   unroll hot loops
+    #   -ftree-vectorize                 enable auto-vectorizer (default at -O3)
+    #   -fipa-pta                        whole-program points-to analysis
+    #   -fno-semantic-interposition      allow cross-TU inlining of extern fns
+    #   -fno-plt                         direct calls instead of through PLT
+    #   -fno-stack-protector             skip canary checks
+    #   -fomit-frame-pointer             free %rbp as a GP register
+    #   -fno-math-errno -fno-trapping-math    skip libm errno + FP trap setup
+    #   -fno-signed-zeros -fno-rounding-math  permit reassociation
+    #   -ffinite-math-only               assume no NaN / Inf
+    #   -flto=auto                       link-time inlining + dead-code elim
+    #
+    # Link-time:
+    #   -Wl,-O3                          maximal linker peephole opts
+    #   -Wl,--as-needed                  no DT_NEEDED for unused libs
+    #   -Wl,--hash-style=gnu             faster runtime symbol resolution
+    #   -Wl,-z,now                       eager bind, no per-call PLT lookup
+    CFLAGS = -O3 -pipe -std=gnu2x -Wall -Wextra -Werror \
+             -march=$(MARCH) -mtune=$(MTUNE) \
+             -funroll-loops -ftree-vectorize \
+             -fipa-pta -fno-semantic-interposition \
+             -fno-plt -fno-stack-protector \
+             -fomit-frame-pointer \
+             -fno-math-errno -fno-trapping-math \
+             -fno-signed-zeros -fno-rounding-math \
+             -ffinite-math-only \
+             -flto=auto
+    LDFLAGS = -lm -flto=auto \
+              -Wl,-O3 -Wl,--as-needed \
+              -Wl,--hash-style=gnu -Wl,-z,now
+    TARGET = c_lib-$(CPU_TARGET)-fast
 else
     # Aggressive size optimization for release builds.
     #
@@ -247,5 +305,8 @@ help:
 	@echo "  coverage, coverage_html"
 	@echo "  install, uninstall"
 	@echo ""
-	@echo "  CPU_TARGET=zen3|zen2|generic"
-	@echo "  BUILD_TYPE=debug|release  (release = -Os + LTO + gc-sections + strip)"
+	@echo "  CPU_TARGET=zen3|zen2|generic|native"
+	@echo "  BUILD_TYPE=debug|release|fast"
+	@echo "    debug   = -O0 -g + ASAN/UBSAN"
+	@echo "    release = -Os + LTO + gc-sections + strip   (smallest binary)"
+	@echo "    fast    = -O3 + LTO + -march=\$$MARCH       (fastest binary)"
